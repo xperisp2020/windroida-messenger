@@ -118,6 +118,9 @@ class WebGateway:
         self.server, self.host, self.port = server, host, port
         self.listener = None
         self._stop = False
+        self._conns, self._conn_lock = {}, threading.Lock()
+        self._sockets = set()
+        self._accept_thread = None
 
     def start(self):
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -125,8 +128,8 @@ class WebGateway:
         self.listener.bind((self.host, self.port))
         self.listener.listen(64)
         self.port = self.listener.getsockname()[1]
-        self._conns, self._conn_lock = {}, threading.Lock()
-        threading.Thread(target=self._accept, daemon=True).start()
+        self._accept_thread = threading.Thread(target=self._accept, daemon=True)
+        self._accept_thread.start()
         threading.Thread(target=self._fetch_lottie, daemon=True).start()
         scheme = "https" if self.server.ssl_ctx else "http"
         log(f"web UI on {scheme}://{self.host}:{self.port}")
@@ -135,9 +138,26 @@ class WebGateway:
     def stop(self):
         self._stop = True
         try:
+            self.listener.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
             self.listener.close()
         except Exception:
             pass
+        if self._accept_thread and self._accept_thread is not threading.current_thread():
+            self._accept_thread.join(timeout=2)
+        with self._conn_lock:
+            sockets = list(self._sockets)
+        for sock in sockets:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     def _accept(self):
         while not self._stop:
@@ -147,20 +167,28 @@ class WebGateway:
                 break
             ip = addr[0]
             with self._conn_lock:
-                if self._conns.get(ip, 0) >= MAX_CONN_PER_IP or sum(self._conns.values()) >= MAX_CONN_TOTAL:
-                    try:
-                        sock.close()
-                    except OSError:
-                        pass
-                    continue
-                self._conns[ip] = self._conns.get(ip, 0) + 1
+                over = self._stop or self._conns.get(ip, 0) >= MAX_CONN_PER_IP or sum(self._conns.values()) >= MAX_CONN_TOTAL
+                if not over:
+                    self._conns[ip] = self._conns.get(ip, 0) + 1
+                    self._sockets.add(sock)
+            if over:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+                if self._stop:
+                    break
+                continue
             threading.Thread(target=self._handle_counted, args=(sock, addr), daemon=True).start()
 
     def _handle_counted(self, sock, addr):
+        tracked = [sock]
         try:
-            self._handle(sock, addr)
+            self._handle(sock, addr, tracked)
         finally:
             with self._conn_lock:
+                self._sockets.discard(sock)
+                self._sockets.discard(tracked[0])
                 n = self._conns.get(addr[0], 1) - 1
                 if n <= 0:
                     self._conns.pop(addr[0], None)
@@ -177,7 +205,7 @@ class WebGateway:
         except OSError:
             pass
 
-    def _handle(self, sock, addr):
+    def _handle(self, sock, addr, tracked=None):
         try:
             sock.settimeout(HEADER_TIMEOUT)
             try:
@@ -191,7 +219,16 @@ class WebGateway:
                     return sock.close()
                 if first and first != b"\x16":
                     return self._redirect_to_https(sock)
+                raw_sock = sock
                 sock = self.server.ssl_ctx.wrap_socket(sock, server_side=True)
+                if tracked is not None:
+                    with self._conn_lock:
+                        if self._stop:
+                            sock.close()
+                            return
+                        self._sockets.discard(raw_sock)
+                        self._sockets.add(sock)
+                    tracked[0] = sock
             raw = b""
             while b"\r\n\r\n" not in raw:
                 chunk = sock.recv(4096)
