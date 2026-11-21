@@ -36,7 +36,15 @@ def ensure_dirs():
 def secret_key():
     p = os.path.join(DATA_DIR, 'secret.key')
     if not os.path.exists(p):
-        with open(p, 'w') as f:
-            f.write(secrets.token_hex(32))
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                f.write(secrets.token_hex(32))
+        except FileExistsError:
+            pass
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass
     with open(p) as f:
         return f.read().strip()
