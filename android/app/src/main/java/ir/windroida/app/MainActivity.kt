@@ -184,8 +184,8 @@ class MainActivity : Activity() {
                 return true
             }
             override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-                // stopLoading() on a blocked redirect reports ERROR_ABORTED; it is not a server outage.
-                if (r.isForMainFrame && e.errorCode != WebViewClient.ERROR_ABORTED) {
+                // Chromium reports ERR_ABORTED (-8) when a blocked navigation is stopped.
+                if (r.isForMainFrame && e.errorCode != -8) {
                     showError()
                 }
             }
