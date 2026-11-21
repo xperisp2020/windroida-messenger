@@ -158,7 +158,7 @@ class HostService : Service() {
 
     private fun stopHosting() {
         stopRequested = true
-        prefs.edit().putBoolean("running", false).putString("error", "").apply()
+        prefs.edit().putBoolean("enabled", false).putBoolean("running", false).putString("error", "").apply()
         Thread({
             synchronized(pythonLock) {
                 try {
