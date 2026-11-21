@@ -37,10 +37,11 @@ class HostCapacityIntegrationTests(unittest.TestCase):
 
         cls.Client = Client
         cls.server = server.WindroidaServer(
-            "127.0.0.1", 0, db_path=root / "windroida.db", web_port=None
+            "127.0.0.1", 0, db_path=root / "windroida.db", web_port=0
         )
         cls.server.seed_admin()
         cls.port = cls.server.start()
+        cls.web_port = cls.server.web.port
         cls.clients = []
 
     @classmethod
@@ -169,40 +170,57 @@ class HostCapacityIntegrationTests(unittest.TestCase):
             before = self.server.conns_total
         raw = socket.create_connection(("127.0.0.1", self.port), timeout=3)
         raw.settimeout(3)
+        web_idle = socket.create_connection(("127.0.0.1", self.web_port), timeout=3)
+        web_idle.settimeout(3)
+
         deadline = time.time() + 3
         while time.time() < deadline:
             with self.server.conns_lock:
                 accepted = self.server.conns_total > before
-            if accepted:
+            with self.server.web._conn_lock:
+                web_accepted = bool(self.server.web._sockets)
+            if accepted and web_accepted:
                 break
             time.sleep(0.02)
-        self.assertTrue(accepted, "raw unauthenticated socket was not accepted")
+        self.assertTrue(accepted, "raw unauthenticated TCP socket was not accepted")
+        self.assertTrue(web_accepted, "idle web gateway socket was not accepted")
 
         self.server.stop()
         try:
             received = raw.recv(1)
         except OSError:
             received = b""
-        self.assertEqual(received, b"", "server shutdown must close unauthenticated clients")
+        self.assertEqual(received, b"", "server shutdown must close unauthenticated TCP clients")
+        try:
+            web_received = web_idle.recv(1)
+        except OSError:
+            web_received = b""
+        self.assertEqual(web_received, b"", "gateway shutdown must close idle HTTP clients")
 
         deadline = time.time() + 5
         while time.time() < deadline:
             with self.server.conns_lock:
                 total = self.server.conns_total
                 open_sockets = len(self.server.open_sockets)
-            if total == 0 and open_sockets == 0:
+            with self.server.web._conn_lock:
+                web_sockets = len(self.server.web._sockets)
+            if total == 0 and open_sockets == 0 and web_sockets == 0:
                 break
             time.sleep(0.05)
         self.assertEqual(total, 0, "connection counter did not drain after shutdown")
-        self.assertEqual(open_sockets, 0, "server retained sockets after shutdown")
-        try:
-            unexpected = socket.create_connection(("127.0.0.1", self.port), timeout=1)
-        except OSError:
-            unexpected = None
-        if unexpected is not None:
-            unexpected.close()
-            self.fail("server accepted a new TCP connection after stop()")
+        self.assertEqual(open_sockets, 0, "server retained TCP sockets after shutdown")
+        self.assertEqual(web_sockets, 0, "gateway retained HTTP sockets after shutdown")
+
+        for port, label in ((self.port, "TCP"), (self.web_port, "web")):
+            try:
+                unexpected = socket.create_connection(("127.0.0.1", port), timeout=1)
+            except OSError:
+                unexpected = None
+            if unexpected is not None:
+                unexpected.close()
+                self.fail(f"server accepted a new {label} connection after stop()")
         raw.close()
+        web_idle.close()
 
 
 
