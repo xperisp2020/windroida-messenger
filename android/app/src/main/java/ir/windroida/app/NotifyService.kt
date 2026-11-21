@@ -151,6 +151,7 @@ class NotifyService : Service() {
                 c.sslSocketFactory = Trust.pinnedContext(pin).socketFactory
             }
             c.requestMethod = "POST"
+            c.instanceFollowRedirects = false
             c.connectTimeout = 10000
             c.readTimeout = 45000
             c.doOutput = true
