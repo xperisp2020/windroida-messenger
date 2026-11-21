@@ -25,7 +25,7 @@ for op,kw in [("history",dict(chat_id=pc)),("search_messages",dict(chat_id=pc,q=
               ("delete_group",dict(chat_id=grp)),("leave",dict(chat_id=grp)),("invite_link",dict(chat_id=grp)),
               ("react",dict(message_id=m1,emoji="👍")),("edit",dict(message_id=m1,text="x")),("delete",dict(message_id=m1)),("get_file",dict(message_id=f)),
               ("forward",dict(message_id=m1,chat_ids=[mc])),("voice_played",dict(message_id=f))]:
-    r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok") or op=="voice_played", r)
+    r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok"), r)
 # reply_to cross-chat
 r=M.call("send",chat_id=mc,text="reply",reply_to=m1); ok("cross-chat reply_to doesn't leak", (not r.get("ok")) or not json.dumps(r,ensure_ascii=False).count("1234"), r)
 # member bob (non-owner) vs group admin actions
@@ -62,13 +62,13 @@ st,b=post(f"/upload?k={km}&chat_id={pc}&name=evil.txt"); ok("outsider can't uplo
 st,b=post(f"/thumb?k={km}&message_id={f}&w=10&h=10",body=b"\xff\xd8\xff"+b"0"*50); ok("outsider can't set thumb on foreign msg", b'"ok": true' not in b, b)
 # calls
 cid=A.call("call_invite",chat_id=pc)
-call_id=cid.get("call_id"); r=M.call("call_end",call_id=call_id); ok("outsider can't end others' call", not r.get("ok") or True, r)
+call_id=cid.get("call_id"); r=M.call("call_end",call_id=call_id); ok("outsider can't end others' call", not r.get("ok"), r)
 r=M.call("call_accept",call_id=call_id); ok("outsider can't accept others' call", not r.get("ok"), r)
 r=M.call("call_signal",call_id=call_id,data={"x":1}); ok("outsider can't signal others' call", not r.get("ok"), r)
 r=M.call("call_invite",chat_id=pc); ok("outsider can't call into foreign chat", not r.get("ok"), r)
 # rooms: outsider
 rm=A.call("room_open",title="x")["room"]["id"]
-r=M.call("room_join",room=rm); ok("room join w/o invite (link on) by id only", True)
+r=M.call("room_join",room=rm); ok("room join by id when public link is enabled", r.get("ok"), r)
 M.call("room_leave",room=rm)   # mallory joined while the link was on; she must leave first, else "already inside" is a normal ok
 A.call("room_ctl",room=rm,a="mode",link=False)
 r=M.call("room_join",room=rm); ok("outsider rejected from linkless room", not r.get("ok"), r)
@@ -80,3 +80,4 @@ r=M.call("update_profile",display_name="  W I N D R O I D A ",bio=""); ok("displ
 r=M.call("update_profile",display_name="مدیر",bio=""); ok("display-name 'مدیر' reserved", not r.get("ok"), r)
 r=M.call("update_profile",display_name="Mally",bio=""); ok("normal display name ok", r.get("ok"), r)
 print(sum(res),"/",len(res))
+raise SystemExit(0 if all(res) else 1)
