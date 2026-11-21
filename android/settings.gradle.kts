@@ -1,16 +1,15 @@
 pluginManagement {
     repositories {
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
-        maven("https://maven.aliyun.com/repository/public")
-        google(); mavenCentral(); gradlePluginPortal()
+        // Prefer canonical repositories; avoid a third-party mirror that can fail independently.
+        google()
+        mavenCentral()
+        gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
     repositories {
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/public")
-        google(); mavenCentral()
+        google()
+        mavenCentral()
     }
 }
 rootProject.name = "Windroida"
