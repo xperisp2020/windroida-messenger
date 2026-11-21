@@ -109,11 +109,15 @@ class HostService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun acquireWifiLock() {
         if (wifiLock?.isHeld == true) return
         try {
+            // FULL is a no-op on modern Android. HIGH_PERF keeps Wi-Fi out of
+            // power-save on API 29–33; API 34+ maps it to the platform's
+            // foreground-only low-latency mode.
             wifiLock = getSystemService(WifiManager::class.java)
-                .createWifiLock(WifiManager.WIFI_MODE_FULL, "Windroida:Host").also {
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Windroida:Host").also {
                     it.setReferenceCounted(false)
                     it.acquire()
                 }
