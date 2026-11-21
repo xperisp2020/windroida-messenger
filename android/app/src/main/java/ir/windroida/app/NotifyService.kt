@@ -172,9 +172,11 @@ class NotifyService : Service() {
         if (App.foreground) return                  // you are looking at the app: it plays its own sound
         val chat = o.optInt("chat_id")
         val isCall = o.optBoolean("call")
-        val open = Intent(this, if (Prefs.mode(this) == "web") MainActivity::class.java else NativeActivity::class.java)
+        val webMode = Prefs.mode(this) == "web"
+        val open = Intent(this, if (webMode) MainActivity::class.java else NativeActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra("chat", chat)
+        if (webMode) open.putExtra(InternalWebLaunch.EXTRA_NONCE, InternalWebLaunch.issue(this))
         val pi = PendingIntent.getActivity(this, chat, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(this, CH_MSG)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
