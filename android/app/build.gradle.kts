@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.chaquo.python")
 }
 android {
     namespace = "ir.windroida.app"
@@ -13,7 +14,9 @@ android {
         targetSdk = 34
         versionCode = 15
         versionName = "2.3"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
+    sourceSets.getByName("main").assets.srcDir(rootProject.projectDir.parentFile.resolve("web"))
     // A permanent release key of YOUR own (see README-android.md, "امضای ثابت"): Play Protect distrusts debug-signed apps far more.
     // The key never lives in the project: it is read from keystore.properties (local build) or WD_* environment variables (GitHub secrets).
     val ksProps = Properties().apply {
@@ -42,6 +45,36 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
+
+val syncHostPython = tasks.register<Copy>("syncHostPython") {
+    val repoRoot = rootProject.projectDir.parentFile
+    from(repoRoot) {
+        include(
+            "server.py", "common.py", "host_capacity.py", "webgw.py",
+            "rooms.py", "mafia_room.py", "mensch_room.py", "mafia.py", "mensch.py",
+            "groupadmin.py", "polls.py", "social.py", "chess.py", "games.py"
+        )
+    }
+    into(layout.buildDirectory.dir("generated/chaquopy/main"))
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip {
+            install("Pillow==11.0.0")
+            install("cryptography==42.0.8")
+        }
+    }
+    sourceSets {
+        getByName("main") {
+            srcDir(layout.buildDirectory.dir("generated/chaquopy/main"))
+        }
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn(syncHostPython) }
+
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     // Lottie's LottieAnimationView extends AppCompatImageView: without this the build fails with "Supertypes ... cannot be resolved" in TEmoji.kt
