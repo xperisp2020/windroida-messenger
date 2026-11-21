@@ -12,6 +12,8 @@ WD_PORT = int(os.environ.get('WD_WEB_PORT', 8081))  # پیام‌رسان وین
 # است. وب‌پنل ادمین حذف شده؛ ادمینی فقط از دیتاشیت ویندروید.
 PASSWORD_AUTH = os.environ.get('GHAB_PASSWORD_AUTH', '0') == '1'  # پیش‌فرض خاموش: ساخت حساب و ورود فقط از ویندروید
 SSO_SECRET = os.environ.get('GHAB_SSO_SECRET', '').strip()
+if SSO_SECRET and len(SSO_SECRET.encode('utf-8')) < 32:
+    raise RuntimeError('GHAB_SSO_SECRET must contain at least 32 bytes of secret material')
 MIN_FREE_MB = int(os.environ.get('GHAB_MIN_FREE_MB', 500))  # کمتر از این فضای خالی: آپلود جدید رد می‌شود
 MAX_UPLOAD_MB = 600  # سقف ایمنی؛ ویدیوها بعد از آپلود خودکار فشرده می‌شوند
 BACKUP = os.environ.get('GHAB_BACKUP', '0') == '1'  # پشتیبان خودکار قبل از ارتقای دیتابیس (پیش‌فرض خاموش تا دیسک پر نشود)
