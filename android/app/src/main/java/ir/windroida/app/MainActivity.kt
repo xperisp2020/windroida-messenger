@@ -138,6 +138,12 @@ class MainActivity : Activity() {
                     v.stopLoading()
                     return
                 }
+                // Same-origin redirects and reloads may drop fragments; restore the per-load bridge nonce before scripts run.
+                if (!hasBridgeNonce(url)) {
+                    v.stopLoading()
+                    v.loadUrl(withBridgeNonce(url))
+                    return
+                }
                 super.onPageStarted(v, url, favicon)
             }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
