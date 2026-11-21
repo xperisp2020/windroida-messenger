@@ -1,4 +1,8 @@
 name: Build Windroida APK
+
+concurrency:
+  group: android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   workflow_dispatch:
   push:
