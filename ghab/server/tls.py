@@ -186,10 +186,15 @@ def ensure_cert(*extra):
     except Exception:
         pass
     try:  # بدون کتابخانه cryptography: گواهی خودامضا با openssl
-        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', crt,
-                        '-days', '397', '-subj', '/CN=' + hosts[0],
-                        '-addext', 'subjectAltName=' + ','.join(f'{t}:{v}' for t, v in _san(hosts))],
-                       check=True, capture_output=True)
+        old_umask = os.umask(0o077) if os.name == 'posix' else None
+        try:
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', crt,
+                            '-days', '397', '-subj', '/CN=' + hosts[0],
+                            '-addext', 'subjectAltName=' + ','.join(f'{t}:{v}' for t, v in _san(hosts))],
+                           check=True, capture_output=True)
+        finally:
+            if old_umask is not None:
+                os.umask(old_umask)
         _restrict_private_key(key)
         open(mark, 'w').write(sig)
         return crt, key
