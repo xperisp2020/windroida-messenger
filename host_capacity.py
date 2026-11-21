@@ -63,7 +63,7 @@ def check_registration_capacity(db, admin_user):
     limits = get_limits(db)
     if limits["max_members"]:
         count = db.execute(
-            "SELECT COUNT(*) FROM users WHERE username<>? COLLATE NOCASE",
+            "SELECT COUNT(*) FROM users WHERE username COLLATE NOCASE <> ?",
             (admin_user,),
         ).fetchone()[0]
         if count >= limits["max_members"]:
