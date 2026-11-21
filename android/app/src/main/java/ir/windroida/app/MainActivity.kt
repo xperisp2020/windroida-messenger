@@ -83,7 +83,7 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val launchNonce = InternalWebLaunch.consume(this, intent)
+        val launchNonce = InternalWebLaunch.consume(intent)
         internalLaunch = launchNonce != null
         bridgeNonce = launchNonce ?: InternalWebLaunch.newNonce()
         internalOnly = internalLaunch && intent.getBooleanExtra("only", false)
@@ -220,7 +220,7 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
-        val nonce = InternalWebLaunch.consume(this, i)
+        val nonce = InternalWebLaunch.consume(i)
         if (nonce == null && Prefs.mode(this) == "native" && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
             val go = Intent(this, NativeActivity::class.java).setAction(i.action).setType(i.type); i.extras?.let { go.putExtras(it) }; go.clipData = i.clipData; go.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(go); return
