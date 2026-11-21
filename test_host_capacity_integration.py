@@ -195,8 +195,13 @@ class HostCapacityIntegrationTests(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(total, 0, "connection counter did not drain after shutdown")
         self.assertEqual(open_sockets, 0, "server retained sockets after shutdown")
-        with self.assertRaises(OSError):
-            socket.create_connection(("127.0.0.1", self.port), timeout=1)
+        try:
+            unexpected = socket.create_connection(("127.0.0.1", self.port), timeout=1)
+        except OSError:
+            unexpected = None
+        if unexpected is not None:
+            unexpected.close()
+            self.fail("server accepted a new TCP connection after stop()")
         raw.close()
 
 
