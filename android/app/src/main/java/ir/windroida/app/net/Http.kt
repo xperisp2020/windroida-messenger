@@ -7,7 +7,6 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
@@ -99,7 +98,6 @@ class Http(private val cfg: ServerCfg) {
         val c = URL(url(path)).openConnection() as HttpURLConnection
         if (c is HttpsURLConnection) {
             c.sslSocketFactory = ctx!!.socketFactory
-            c.hostnameVerifier = HostnameVerifier { _, _ -> true }      // identity = the pinned fingerprint
         }
         c.requestMethod = method
         cookie?.let { c.setRequestProperty("Cookie", it) }
