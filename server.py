@@ -2445,16 +2445,16 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         t = now()
         if exp < t or exp > t + 120:
             return 400, {"ok": False, "error": "expired"}
-        used = self.__dict__.setdefault("_ghab_share_used", {})
-        lock = self.__dict__.setdefault("_ghab_share_lock", threading.Lock())
-        with lock:
-            for k in [k for k, v in used.items() if v < t]:
-                del used[k]
-            if sig in used:
-                return 400, {"ok": False, "error": "replay"}
-            used[sig] = exp + 5
         db = connect_db(self.db_path)
         try:
+            # The unique database key makes replay rejection survive restarts and multiple workers.
+            db.execute("DELETE FROM ghab_share_used WHERE expires < ?", (t,))
+            try:
+                db.execute("INSERT INTO ghab_share_used(signature, expires) VALUES(?,?)", (sig, exp + 5))
+                db.commit()
+            except sqlite3.IntegrityError:
+                db.rollback()
+                return 400, {"ok": False, "error": "replay"}
             a = db.execute("SELECT id FROM users WHERE username=? AND banned=0", (frm,)).fetchone()
             b = db.execute("SELECT id FROM users WHERE username=? AND banned=0", (to,)).fetchone()
             if not a or not b:
