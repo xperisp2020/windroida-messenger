@@ -11,8 +11,9 @@ object TrustedOrigin {
         return try {
             if (raw.isNullOrBlank() || raw.any { it.isWhitespace() || it.code < 0x20 }) return null
             val uri = URI(raw)
-            if (!uri.isAbsolute || uri.isOpaque || uri.rawUserInfo != null || uri.rawAuthority.isNullOrEmpty()) return null
-            if (uri.rawAuthority.endsWith(":")) return null
+            val authority = uri.rawAuthority ?: return null
+            if (!uri.isAbsolute || uri.isOpaque || uri.rawUserInfo != null || authority.isEmpty()) return null
+            if (authority.endsWith(":")) return null
             val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
             if (scheme != "http" && scheme != "https") return null
             val rawHost = uri.host ?: return null
