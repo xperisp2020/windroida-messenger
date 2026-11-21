@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.NetworkInterface
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -20,6 +19,7 @@ import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONObject
 import java.io.File
 import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.Collections
 
 /** Keeps the phone's own Windroida messenger server alive while the user explicitly hosts. */
@@ -203,7 +203,7 @@ class HostService : Service() {
     private fun installWebAssets() {
         val webDir = File(filesDir, "windroida/web")
         val stamp = File(webDir, ".windroida-assets-version")
-        val version = BuildConfig.VERSION_CODE.toString()
+        val version = packageManager.getPackageInfo(packageName, 0).longVersionCode.toString()
         if (stamp.isFile && runCatching { stamp.readText() == version }.getOrDefault(false)) return
         if (webDir.exists()) webDir.deleteRecursively()
         webDir.mkdirs()
