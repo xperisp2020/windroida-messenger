@@ -8,7 +8,7 @@ be used to log in as someone else, pick an arbitrary username, or become admin (
 """
 import hmac as hmac_lib
 import secrets
-import threading
+import sqlite3
 import time
 
 from flask import Blueprint, current_app, redirect, request
@@ -20,19 +20,16 @@ from .services import get_int, log_activity, log_event, now
 
 bp = Blueprint("sso", __name__)
 
-_used_lock = threading.Lock()
-_used = {}  # token signature -> epoch it stops mattering by (replay guard: each token is redeemable once)
-
-
-def _check_replay(sig, keep_until):
-    t = time.time()
-    with _used_lock:
-        for k in [k for k, exp in _used.items() if exp < t]:
-            del _used[k]
-        if sig in _used:
-            return False
-        _used[sig] = keep_until
+def _check_replay(db, sig, keep_until):
+    """Persist consumed signatures so a restart or second worker cannot reopen the replay window."""
+    db.execute("DELETE FROM sso_used WHERE expires < ?", (time.time(),))
+    try:
+        db.execute("INSERT INTO sso_used(signature, expires) VALUES(?,?)", (sig, keep_until))
+        db.commit()
         return True
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return False
 
 
 @bp.get("/sso")
@@ -57,7 +54,7 @@ def sso_login():
         fail("bad_token", "لینک نامعتبر است", "Invalid link", 400)
     if time.time() > expiry:
         fail("expired", "این لینک منقضی شده؛ دوباره از ویندروید باز کن", "This link expired; open it again from Windroida", 400)
-    if not _check_replay(sig, expiry + 5):
+    if not _check_replay(db, sig, expiry + 5):
         log_event(db, "warning", "sso_replay", "username=%s" % username[:32], ip)
         fail("bad_token", "این لینک قبلاً استفاده شده", "This link was already used", 400)
     row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
