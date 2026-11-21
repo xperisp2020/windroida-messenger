@@ -14,7 +14,7 @@ from app import db as dbm
 
 
 class SsoBase(unittest.TestCase):
-    secret = "test-sso-secret-not-real"
+    secret = "test-sso-secret-not-real-0123456789-abcdef"
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
