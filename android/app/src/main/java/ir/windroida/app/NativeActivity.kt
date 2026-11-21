@@ -492,9 +492,7 @@ class NativeActivity : Activity() {
     fun openWebOnce(hash: String? = null, chat: Long = 0L, only: Boolean = hash != null && (hash.startsWith("room=") || hash.startsWith("game=") || hash.startsWith("gcall=") || hash.startsWith("gjoin="))) {
         // only = just the room / game page (no web chat UI around it); Back closes it and returns to the native app
         val nonce = InternalWebLaunch.issue(this)
-        val nonce = InternalWebLaunch.issue(this)
         val i = Intent(this, MainActivity::class.java).putExtra("once", true).putExtra("only", only)
-            .putExtra(InternalWebLaunch.EXTRA_NONCE, nonce)
             .putExtra(InternalWebLaunch.EXTRA_NONCE, nonce)
         if (hash != null) i.putExtra("hash", hash)
         if (chat != 0L) i.putExtra("chat", chat.toInt())
