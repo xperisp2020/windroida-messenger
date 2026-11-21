@@ -36,7 +36,7 @@ r=M.call("send",chat_id=mc,text="reply",reply_to=m1); ok("cross-chat reply_to do
 for op,kw in [("add_member",dict(chat_id=grp,username="gina")),("remove_member",dict(chat_id=grp,user_id=A.uid)),("edit_group",dict(chat_id=grp,title="x")),("delete_group",dict(chat_id=grp)),("pin",dict(chat_id=grp,message_id=gm)),("edit",dict(message_id=gm,text="x")),("delete",dict(message_id=gm))]:
     r=B.call(op,**kw); ok(f"plain member cannot {op}", not r.get("ok"), r)
 # forward to chat I'm not in
-r=B.call("forward",message_id=m1,chat_ids=[mc]); ok("cannot forward into foreign chat", not r.get("ok") or not r.get("messages"), r)
+r=B.call("forward",message_id=m1,chat_ids=[mc]); ok("cannot forward into foreign chat", not r.get("ok"), r)
 # sessions
 sa=A.call("sessions")["sessions"][0]["id"]
 r=M.call("terminate_session",session_id=sa); ok("cannot kill others' session", not r.get("ok") , r); 
