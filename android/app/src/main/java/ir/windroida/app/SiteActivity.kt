@@ -64,9 +64,11 @@ class SiteActivity : Activity() {
 
     /** same host (and scheme) as the Windroida server the app is set up for; the port may differ (Cloud Drive / Ghab have their own) */
     private fun sameHost(u: String): Boolean {
+        val servicePrefs = getSharedPreferences("wd", MODE_PRIVATE)
         val servicePorts = setOf(
             8082, // Cloud Drive default port
-            getSharedPreferences("wd", MODE_PRIVATE).getInt("ghab_port", 0)
+            servicePrefs.getInt("drive_port", 0),
+            servicePrefs.getInt("ghab_port", 0)
         ).filter { it in 1..65535 }.toSet()
         return TrustedOrigin.isAllowedService(Prefs.server(this), u, servicePorts)
     }
