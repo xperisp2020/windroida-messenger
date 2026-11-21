@@ -18,6 +18,7 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
+import javax.net.ssl.TrustManager
 
 @RunWith(AndroidJUnit4::class)
 class HostServiceInstrumentedTest {
@@ -82,7 +83,7 @@ class HostServiceInstrumentedTest {
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
         }
         return SSLContext.getInstance("TLS").apply {
-            init(null, arrayOf(trust), SecureRandom())
+            init(null, arrayOf<TrustManager>(trust), SecureRandom())
         }
     }
 }
