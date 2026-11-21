@@ -35,6 +35,8 @@ jobs:
           node tests/test_webview_bridge.js
       - name: Check embedded Android host runtime Python syntax
         run: python -m py_compile android/app/src/main/python/android_host.py
+      - name: Test Android host runtime path configuration
+        run: python -m unittest -v test_android_host_runtime.py
       - name: Run private-key permission tests
         run: python -m unittest -v test_private_key_permissions.py
       - name: Run Ghab security tests
@@ -64,6 +66,8 @@ jobs:
         run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
       - name: Verify host capacity policy and server integration on Windows
         run: python -m unittest -v test_host_capacity.py test_host_capacity_integration.py
+      - name: Run Android host runtime path tests on Windows
+        run: python -m unittest -v test_android_host_runtime.py
       - name: Run messenger security integration tests on Windows
         env:
           PYTHONIOENCODING: utf-8
