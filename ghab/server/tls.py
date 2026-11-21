@@ -10,7 +10,9 @@ import datetime
 import ipaddress
 import os
 import socket
+import stat
 import subprocess
+import tempfile
 
 from .config import CERT_DIR
 
@@ -52,22 +54,41 @@ def custom_cert():
 
 
 def _restrict_private_key(path):
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    if os.path.islink(path):
+        raise PermissionError(f'refusing symlink for private key: {path}')
+    if os.name != 'posix':
+        return
+    os.chmod(path, 0o600)
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    if mode != 0o600:
+        raise PermissionError(f'private key permissions are {mode:o}, expected 600: {path}')
 
 
 def _write_key(path, key):
     from cryptography.hazmat.primitives import serialization
     data = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                              serialization.NoEncryption())
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'wb') as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    _restrict_private_key(path)
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(prefix='.private-key-', suffix='.tmp', dir=directory)
+    try:
+        if os.name == 'posix':
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+        _restrict_private_key(path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _ensure_ca():
@@ -150,6 +171,8 @@ def ensure_cert(*extra):
             f.write(cert.public_bytes(serialization.Encoding.PEM) + ca.public_bytes(serialization.Encoding.PEM))
         open(mark, 'w').write(sig)
         return crt, key
+    except PermissionError:
+        raise
     except Exception:
         pass
     try:  # بدون کتابخانه cryptography: گواهی خودامضا با openssl
