@@ -132,7 +132,13 @@ def _ensure_ca():
 
 
 def _needs_renewal(crt, mark, sig):
-    if not (os.path.exists(crt) and os.path.exists(mark)) or open(mark).read() != sig:
+    if not (os.path.exists(crt) and os.path.exists(mark)):
+        return True
+    try:
+        with open(mark, encoding='utf-8') as f:
+            if f.read() != sig:
+                return True
+    except OSError:
         return True
     try:
         from cryptography import x509
@@ -179,7 +185,8 @@ def ensure_cert(*extra):
         _write_key(key, k)
         with open(crt, 'wb') as f:
             f.write(cert.public_bytes(serialization.Encoding.PEM) + ca.public_bytes(serialization.Encoding.PEM))
-        open(mark, 'w').write(sig)
+        with open(mark, 'w', encoding='utf-8') as f:
+            f.write(sig)
         return crt, key
     except PermissionError:
         raise
