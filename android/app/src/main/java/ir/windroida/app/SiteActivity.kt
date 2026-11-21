@@ -97,6 +97,14 @@ class SiteActivity : Activity() {
 
         val wc = WebCache(this, origin); cache = wc
         web.webViewClient = object : WebViewClient() {
+            // Redirects must not land a sibling or external document inside this privileged WebView.
+            override fun onPageStarted(v: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                if (originOf(url) != origin) {
+                    v.stopLoading()
+                    return
+                }
+                super.onPageStarted(v, url, favicon)
+            }
             // Ghab's photos and videos are kept on the phone (400 MB, like Instagram) and the pages work offline
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? =
                 try { wc.handle(r.url.toString(), r.method, r.requestHeaders ?: emptyMap()) } catch (_: Exception) { null }
