@@ -1,3 +1,15 @@
+/* SiteActivity injects WD into every frame; require the private top-level fragment nonce before exposing native downloads. */
+(()=>{
+  const raw=window.WD;if(!raw)return;
+  const parts=location.hash.slice(1).split('&').filter(Boolean);
+  const part=parts.find(x=>x.startsWith('wdnonce='));const nonce=part?part.slice(8):'';
+  if(part){const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}}
+  if(!/^[A-Za-z0-9_-]{40,50}$/.test(nonce)){window.WD=null;return}
+  window.WD={
+    saveFile:(u,n)=>raw.saveFile(nonce,u,n),
+    saveFileId:(id,u,n)=>raw.saveFileId(nonce,id,u,n)
+  };
+})();
 // Shared helpers: DOM builder, icons, i18n (fa/en), theme, API client, toasts, dialogs. No external libraries.
 const NS = "http://www.w3.org/2000/svg";
 const ICONS = {
