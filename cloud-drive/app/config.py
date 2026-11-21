@@ -53,6 +53,9 @@ def load_config(**overrides):
         HOUSEKEEPING=True,
     )
     cfg.update(overrides)
+    sso_secret = cfg.get("SSO_SECRET") or ""
+    if sso_secret and len(str(sso_secret).encode("utf-8")) < 32:
+        raise RuntimeError("CD_SSO_SECRET must contain at least 32 bytes of secret material")
     for k in ("UPLOAD_DIR", "TMP_DIR", "LOG_DIR", "DB_PATH"):
         if k not in overrides:
             base = Path(cfg["DATA_DIR"]).resolve()
