@@ -16,6 +16,8 @@ class TrustedOriginTest {
         assertFalse(TrustedOrigin.sameOrigin(expected, "https://example.com.attacker.test/"))
         assertFalse(TrustedOrigin.sameOrigin(expected, "https://example.com@attacker.test/"))
         assertFalse(TrustedOrigin.sameOrigin(expected, "https://attacker.test@example.com/"))
+        assertFalse(TrustedOrigin.sameOrigin(expected, "https://example.com./"))
+        assertFalse(TrustedOrigin.sameOrigin(expected, "https://example.com:/"))
     }
 
     @Test fun schemeAndPortArePartOfOrigin() {
