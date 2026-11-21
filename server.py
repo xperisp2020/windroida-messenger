@@ -17,6 +17,8 @@ import ssl
 import subprocess
 import sys
 import shutil
+import stat
+import tempfile
 import threading
 import time
 import uuid
@@ -77,24 +79,51 @@ def _fsync_file(p):
         pass
 
 
-def _write_private_bytes(path, data):
-    """Create/replace a private key or secret with owner-only permissions where supported."""
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "wb") as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-
-
 def _restrict_private_file(path):
+    """Restrict an existing secret before it is read; fail closed if POSIX permissions cannot be secured."""
+    path = Path(path)
+    if path.is_symlink():
+        raise PermissionError(f"refusing symlink for private file: {path}")
+    if os.name != "posix":
+        return
+    os.chmod(path, 0o600)
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode != 0o600:
+        raise PermissionError(f"private file permissions are {mode:o}, expected 600: {path}")
+
+
+def _write_private_bytes(path, data):
+    """Atomically replace a private key/secret; the temporary file is private before any secret bytes are written."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.name == "posix" and stat.S_IMODE(os.stat(tmp_name).st_mode) != 0o600:
+            raise PermissionError(f"temporary private file is not mode 600: {tmp_name}")
+        os.replace(tmp_name, path)
+        _restrict_private_file(path)
+        if os.name == "posix":
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def _atomic_write(path, text):
@@ -108,17 +137,15 @@ def _atomic_write(path, text):
 
 
 def _atomic_copy(src, dst):
+    if dst.name.endswith(".key"):
+        _write_private_bytes(dst, Path(src).read_bytes())
+        return
     tmp = dst.with_name(dst.name + ".tmp")
     with open(src, "rb") as a, open(tmp, "wb") as b:
         b.write(a.read())
         b.flush()
         os.fsync(b.fileno())
     os.replace(tmp, dst)
-    try:
-        if dst.name.endswith(".key"):
-            os.chmod(dst, 0o600)
-    except OSError:
-        pass
 
 
 _LOG_LOCK = threading.Lock()
@@ -2328,19 +2355,13 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
     # ----------------------------------------------------- media access keys
     def _load_secret(self):
         path = Path(self.db_path).parent / "secret.key"
-        try:
+        if path.exists():
+            _restrict_private_file(path)
             data = path.read_bytes()
             if len(data) >= 32:
-                _restrict_private_file(path)
                 return data
-        except OSError:
-            pass
         data = os.urandom(32)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            _write_private_bytes(path, data)
-        except OSError:
-            pass
+        _write_private_bytes(path, data)
         return data
 
     DRIVE_TOKEN_TTL = 60   # seconds a "open my cloud drive" link stays valid (one-time; see cloud-drive/app/routes_sso.py)
@@ -2350,19 +2371,13 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         password. Written as hex text so it's easy to paste into cloud-drive/.env as CD_SSO_SECRET. Nobody else can
         mint a valid token without this exact value, so it must never be copied anywhere but that one file."""
         path = Path(self.db_path).parent / fname
-        try:
+        if path.exists():
+            _restrict_private_file(path)
             data = path.read_text(encoding="utf-8").strip()
             if len(data) >= 32:
-                _restrict_private_file(path)
                 return data
-        except OSError:
-            pass
         data = secrets.token_hex(32)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            _write_private_bytes(path, data.encode("utf-8"))
-        except OSError:
-            pass
+        _write_private_bytes(path, data.encode("utf-8"))
         return data
 
     def op_drive_token(self, conn, req):
