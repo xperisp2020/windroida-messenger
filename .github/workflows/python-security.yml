@@ -41,6 +41,8 @@ jobs:
       - name: Run Cloud Drive tests
         working-directory: cloud-drive
         run: python -m unittest discover -s tests -t . -v
+      - name: Run cross-platform host capacity tests
+        run: python -m unittest -v test_host_capacity.py
       - name: Run messenger security tests
         run: python test_security.py
       - name: Run gateway security tests
@@ -59,6 +61,8 @@ jobs:
           python -m pip install -r requirements-all.txt
       - name: Verify owner-only Windows ACLs
         run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
+      - name: Verify host capacity policy on Windows
+        run: python -m unittest -v test_host_capacity.py
       - name: Verify Cloud Drive session-secret ACLs
         working-directory: cloud-drive
         run: python -m unittest -v tests.test_sso.TestSso.test_session_secret_windows_acl_is_owner_only
