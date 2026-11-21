@@ -80,16 +80,21 @@ def _fsync_file(p):
 
 
 def _restrict_private_file(path):
-    """Restrict an existing secret before it is read; fail closed if POSIX permissions cannot be secured."""
+    """Restrict an existing secret before it is read; fail closed on POSIX and Windows."""
     path = Path(path)
     if path.is_symlink():
         raise PermissionError(f"refusing symlink for private file: {path}")
-    if os.name != "posix":
-        return
-    os.chmod(path, 0o600)
-    mode = stat.S_IMODE(path.stat().st_mode)
-    if mode != 0o600:
-        raise PermissionError(f"private file permissions are {mode:o}, expected 600: {path}")
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode != 0o600:
+            raise PermissionError(f"private file permissions are {mode:o}, expected 600: {path}")
+    elif os.name == "nt":
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(
+            ["icacls", str(path), "/inheritance:r", "/grant:r", f"{account}:(F)"],
+            check=True, capture_output=True, text=True
+        )
 
 
 def _write_private_bytes(path, data):
@@ -100,6 +105,8 @@ def _write_private_bytes(path, data):
     try:
         if os.name == "posix":
             os.fchmod(fd, 0o600)
+        elif os.name == "nt":
+            _restrict_private_file(tmp_name)
         with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
