@@ -63,6 +63,8 @@ jobs:
       - name: Verify host capacity policy and server integration on Windows
         run: python -m unittest -v test_host_capacity.py test_host_capacity_integration.py
       - name: Run messenger security integration tests on Windows
+        env:
+          PYTHONIOENCODING: utf-8
         run: python test_security.py
       - name: Verify Cloud Drive session-secret ACLs
         working-directory: cloud-drive
