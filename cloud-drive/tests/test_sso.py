@@ -38,6 +38,7 @@ class SsoBase(unittest.TestCase):
 
 
 class TestSso(SsoBase):
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced the same way on Windows")
     def test_session_secret_is_owner_only_and_existing_permissions_are_repaired(self):
         from app import _resolve_secret
         path = Path(self.tmp) / "secret.key"
