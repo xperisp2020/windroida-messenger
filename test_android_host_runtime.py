@@ -43,7 +43,10 @@ class AndroidHostRuntimeTests(unittest.TestCase):
             self.assertTrue((root / "web" / "index.html").is_file())
             self.assertTrue((root / "data").is_dir())
 
-            tcp_port, web_port = free_port(), free_port()
+            tcp_port = free_port()
+            web_port = free_port()
+            while web_port == tcp_port:
+                web_port = free_port()
             result = json.loads(android_host.start_host(
                 temp, "127.0.0.1", tcp_port, web_port
             ))
