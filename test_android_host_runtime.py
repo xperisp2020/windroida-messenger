@@ -12,6 +12,7 @@ PYTHON_DIR = REPO_ROOT / "android" / "app" / "src" / "main" / "python"
 CHILD_TEST = r"""
 import json
 import socket
+import ssl
 import sys
 from pathlib import Path
 
@@ -53,8 +54,20 @@ assert result["web_port"] == web_port
 assert (root / "data" / "admin_password.txt").is_file()
 assert json.loads(android_host.host_status())["running"]
 
+tls_context = ssl._create_unverified_context()
+tls_idle = tls_context.wrap_socket(
+    socket.create_connection(("127.0.0.1", tcp_port), timeout=5),
+    server_hostname="127.0.0.1",
+)
+tls_idle.settimeout(5)
 android_host.stop_host()
 assert not json.loads(android_host.host_status())["running"]
+try:
+    assert tls_idle.recv(1) == b""
+except (ConnectionError, OSError):
+    pass
+finally:
+    tls_idle.close()
 for port in (tcp_port, web_port):
     try:
         socket.create_connection(("127.0.0.1", port), timeout=1).close()
