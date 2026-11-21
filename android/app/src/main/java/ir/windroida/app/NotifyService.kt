@@ -149,7 +149,6 @@ class NotifyService : Service() {
         try {
             if (c is HttpsURLConnection) {
                 c.sslSocketFactory = Trust.pinnedContext(pin).socketFactory
-                c.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }   // the pinned fingerprint is what we trust
             }
             c.requestMethod = "POST"
             c.connectTimeout = 10000
