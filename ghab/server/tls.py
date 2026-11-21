@@ -203,7 +203,8 @@ def ensure_cert(*extra):
             if old_umask is not None:
                 os.umask(old_umask)
         _restrict_private_key(key)
-        open(mark, 'w').write(sig)
+        with open(mark, 'w', encoding='utf-8') as f:
+            f.write(sig)
         return crt, key
     except Exception:
         return None
