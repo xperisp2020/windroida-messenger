@@ -270,6 +270,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.notify_seq = defaultdict(int)
         self.notify_cv = threading.Condition()
         self.listener = None
+        self.accept_thread = None
         self.ssl_ctx = None
         self._stop = threading.Event()
         self._rooms_init()
@@ -319,7 +320,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.listener.bind((self.host, self.port))
         self.listener.listen(64)
         self.port = self.listener.getsockname()[1]
-        threading.Thread(target=self._accept_loop, daemon=True).start()
+        self.accept_thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self.accept_thread.start()
         threading.Thread(target=self._song_sweeper, daemon=True).start()
         log(f"server listening on {self.host}:{self.port} (tls={'on' if self.tls else 'off'})")
         if self.web_port is not None:
@@ -343,9 +345,15 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         if self.web:
             self.web.stop()
         try:
+            self.listener.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
             self.listener.close()
         except Exception:
             pass
+        if self.accept_thread and self.accept_thread is not threading.current_thread():
+            self.accept_thread.join(timeout=2)
         with self.conns_lock:
             sockets = list(self.open_sockets)
         for sock in sockets:
