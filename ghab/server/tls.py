@@ -51,11 +51,23 @@ def custom_cert():
     return (crt, key) if os.path.exists(crt) and os.path.exists(key) else None
 
 
+def _restrict_private_key(path):
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def _write_key(path, key):
     from cryptography.hazmat.primitives import serialization
-    with open(path, 'wb') as f:
-        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
-                                  serialization.NoEncryption()))
+    data = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                             serialization.NoEncryption())
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    _restrict_private_key(path)
 
 
 def _ensure_ca():
@@ -64,6 +76,7 @@ def _ensure_ca():
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.x509.oid import NameOID
     if os.path.exists(CA_CERT) and os.path.exists(CA_KEY):
+        _restrict_private_key(CA_KEY)
         with open(CA_KEY, 'rb') as f:
             key = serialization.load_pem_private_key(f.read(), None)
         with open(CA_CERT, 'rb') as f:
@@ -109,6 +122,7 @@ def ensure_cert(*extra):
     crt, key, mark = (os.path.join(CERT_DIR, n) for n in ('cert.pem', 'key.pem', 'hosts.txt'))
     sig = ','.join(hosts)
     if not _needs_renewal(crt, mark, sig) and os.path.exists(key):
+        _restrict_private_key(key)
         return crt, key
     try:
         from cryptography import x509
@@ -143,6 +157,7 @@ def ensure_cert(*extra):
                         '-days', '397', '-subj', '/CN=' + hosts[0],
                         '-addext', 'subjectAltName=' + ','.join(f'{t}:{v}' for t, v in _san(hosts))],
                        check=True, capture_output=True)
+        _restrict_private_key(key)
         open(mark, 'w').write(sig)
         return crt, key
     except Exception:
