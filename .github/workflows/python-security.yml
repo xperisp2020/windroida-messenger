@@ -33,6 +33,8 @@ jobs:
           node --check ghab/web/static/app.js
           node --check cloud-drive/app/static/js/common.js
           node tests/test_webview_bridge.js
+      - name: Check embedded Android host runtime Python syntax
+        run: python -m py_compile android/app/src/main/python/android_host.py
       - name: Run private-key permission tests
         run: python -m unittest -v test_private_key_permissions.py
       - name: Run Ghab security tests
