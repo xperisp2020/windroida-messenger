@@ -575,8 +575,12 @@ class MainActivity : Activity() {
                     // This bridge is for web destinations only; never let page script trigger arbitrary Android intent schemes.
                     if (TrustedOrigin.canonicalOrigin(url) == null) return@runOnUiThread
                     val s = Prefs.server(this@MainActivity)
-                    val sameHost = TrustedOrigin.sameHostAndScheme(s, url)
-                    if (sameHost) startActivity(Intent(this@MainActivity, SiteActivity::class.java).putExtra("url", url))
+                    val servicePorts = setOf(
+                        8082, // Cloud Drive default port
+                        getSharedPreferences("wd", MODE_PRIVATE).getInt("ghab_port", 0)
+                    ).filter { it in 1..65535 }.toSet()
+                    val trustedService = TrustedOrigin.isAllowedService(s, url, servicePorts)
+                    if (trustedService) startActivity(Intent(this@MainActivity, SiteActivity::class.java).putExtra("url", url))
                     else startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (_: Exception) {
                     Toast.makeText(this@MainActivity, "مرورگر پیدا نشد", Toast.LENGTH_LONG).show()
