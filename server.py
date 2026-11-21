@@ -77,6 +77,26 @@ def _fsync_file(p):
         pass
 
 
+def _write_private_bytes(path, data):
+    """Create/replace a private key or secret with owner-only permissions where supported."""
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _restrict_private_file(path):
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def _atomic_write(path, text):
     """write -> flush to disk -> rename: a power cut leaves either the old file or the new one, never half of it"""
     tmp = path.with_name(path.name + ".tmp")
@@ -355,6 +375,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             ctx.num_tickets = 0        # no TLS 1.3 session tickets: they are written right after the handshake, racing with the
         except (AttributeError, ValueError):   # first request on the same socket (rare stalls seen in tests)
             pass
+        _restrict_private_file(key)
         ctx.load_cert_chain(str(crt), str(key))
         return ctx
 
@@ -435,8 +456,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                                                  crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
                     .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
                     .sign(k, hashes.SHA256()))
-            key.write_bytes(k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
-                                            serialization.NoEncryption()))
+            _write_private_bytes(key, k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                                       serialization.NoEncryption()))
             crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
             return True
         except Exception as e:
@@ -459,6 +480,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                             "-addext", "subjectAltName=" + ",".join(san),
                             "-addext", "basicConstraints=critical,CA:TRUE",
                             "-addext", "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign"], check=True, capture_output=True)
+            _restrict_private_file(key)
             return True
         except (OSError, subprocess.CalledProcessError):
             return False
@@ -2309,14 +2331,14 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         try:
             data = path.read_bytes()
             if len(data) >= 32:
+                _restrict_private_file(path)
                 return data
         except OSError:
             pass
         data = os.urandom(32)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-            os.chmod(path, 0o600)
+            _write_private_bytes(path, data)
         except OSError:
             pass
         return data
@@ -2331,14 +2353,14 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         try:
             data = path.read_text(encoding="utf-8").strip()
             if len(data) >= 32:
+                _restrict_private_file(path)
                 return data
         except OSError:
             pass
         data = secrets.token_hex(32)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(data, encoding="utf-8")
-            os.chmod(path, 0o600)
+            _write_private_bytes(path, data.encode("utf-8"))
         except OSError:
             pass
         return data
