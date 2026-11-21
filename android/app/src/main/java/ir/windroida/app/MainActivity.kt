@@ -144,6 +144,8 @@ class MainActivity : Activity() {
                     v.loadUrl(withBridgeNonce(url))
                     return
                 }
+                pageReady = false
+                errBox.visibility = View.GONE
                 super.onPageStarted(v, url, favicon)
             }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
@@ -208,7 +210,6 @@ class MainActivity : Activity() {
                     }
                 } catch (_: Exception) { return null }
             }
-            override fun onPageStarted(v: WebView, url: String, f: android.graphics.Bitmap?) { pageReady = false; errBox.visibility = View.GONE }
             override fun onPageFinished(v: WebView, url: String) {
                 pageReady = true
                 if (errBox.visibility != View.VISIBLE) hideSplash()
