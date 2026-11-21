@@ -1298,9 +1298,33 @@ function dlgSettings(){
   const srvWalls=h('div',{class:'walls srv'});
   call('wallpaper_list').then(r=>srvWalls.replaceChildren(...r.walls.map(w=>h('button',{type:'button',class:'wsw wphoto',title:w.name,style:'background-image:url("'+wallUrl(w.name,w.v,true)+'")',onclick:()=>{lsSet('wd-wall','srv:'+w.name+'|'+w.v);applyWall()}})))).catch(()=>{});
   const size=h('input',{type:'range',min:13,max:19,value:PREF.size,style:'padding:0;border:0',oninput:e=>applySize(+e.target.value)});
+  const hostMembers=h('input',{type:'number',min:0,max:100000,value:'0',inputmode:'numeric'});
+  const hostOnline=h('input',{type:'number',min:0,max:5000,value:'0',inputmode:'numeric'});
+  const hostInfo=h('div',{class:'muted',style:'font-size:12px;line-height:1.8'});
+  const hostMsg=h('div',{class:'msg'});
+  const hostPanel=h('section',{style:'display:none;margin-top:12px'},
+    h('hr'),h('b',{},'میزبانی و ظرفیت سرور'),
+    h('div',{class:'muted',style:'font-size:12px;line-height:1.8;margin:5px 0'},'این محدودیت‌ها روی سرور اعمال می‌شوند و برای کاربران Android و Windows یکسان هستند. مقدار صفر یعنی بدون محدودیت.'),
+    h('label',{},'حداکثر اعضای ثبت‌نام‌شده'),hostMembers,
+    h('label',{},'حداکثر کاربران آنلاین هم‌زمان'),hostOnline,
+    h('button',{class:'btn soft',style:'display:block;margin-top:8px',onclick:async()=>{
+      try{
+        const r=await call('host_limits',{action:'set',max_members:hostMembers.value,max_online:hostOnline.value});
+        hostInfo.textContent='اعضا: '+fa(r.members)+' / '+(r.capacity.max_members?fa(r.capacity.max_members):'بدون محدودیت')+' — آنلاین: '+fa(r.online)+' / '+(r.capacity.max_online?fa(r.capacity.max_online):'بدون محدودیت');
+        hostMsg.className='msg ok';hostMsg.textContent='ظرفیت سرور ذخیره شد';
+      }catch(e){hostMsg.className='msg';hostMsg.textContent=e.message}
+    }},'ذخیره ظرفیت'),hostInfo,hostMsg);
+  call('host_limits').then(r=>{
+    if(!r.is_owner)return;
+    hostMembers.value=String(r.capacity.max_members);
+    hostOnline.value=String(r.capacity.max_online);
+    hostInfo.textContent='اعضا: '+fa(r.members)+' / '+(r.capacity.max_members?fa(r.capacity.max_members):'بدون محدودیت')+' — آنلاین: '+fa(r.online)+' / '+(r.capacity.max_online?fa(r.capacity.max_online):'بدون محدودیت');
+    hostPanel.style.display='block';
+  }).catch(()=>{});
   dialog('تنظیمات',
     sw('حالت تاریک',document.documentElement.dataset.theme==='dark',on=>setTheme(on?'dark':'light')),
     h('label',{},'رنگ اصلی'),sws,h('label',{},'اندازه متن'),size,
+    hostPanel,
     h('label',{},'پس‌زمینه چت'),srvWalls,h('div',{class:'walls'},WALLS.map(([n,v])=>h('button',{type:'button',class:'wsw',title:n,style:v?'background:'+v:'',onclick:()=>{lsSet('wd-wall',v);applyWall()}},v?'':'A')),
       ...(S.walls||[]).map(v=>{const del=async()=>{if(!confirm('این عکس پس‌زمینه حذف بشه؟'))return;try{const r=await call('userwall_remove',{v});S.walls=r.walls||[];S.wallV=r.wall_v||0;wallSetSave(v,null);if((lsGet('wd-wall','')||'')==='mine:'+v)lsSet('wd-wall','');applyWall();closeDialog();dlgSettings();toast('حذف شد',false)}catch(e){toast(e.message)}};
         const menu=(x,y)=>popMenu(x,y+34,[['استفاده','check',()=>{lsSet('wd-wall','mine:'+v);applyWall()}],['تنظیم اندازه','settings',()=>dlgWallSize(v)],['حذف','delete',del,true]]);
