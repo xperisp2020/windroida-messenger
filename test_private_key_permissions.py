@@ -111,6 +111,29 @@ class PrivateFilePermissionTests(unittest.TestCase):
             tls._write_key(str(path), ec.generate_private_key(ec.SECP256R1()))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_ghab_custom_tls_rejects_symlinked_private_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cert = root / "fullchain.pem"
+            cert.write_text("certificate", encoding="utf-8")
+            target = root / "unrelated-private-key.pem"
+            target.write_text("private key", encoding="utf-8")
+            link = root / "privkey.pem"
+            link.symlink_to(target)
+
+            with mock.patch.dict(os.environ, {"GHAB_CERT": str(cert), "GHAB_KEY": str(link)}):
+                with self.assertRaises(PermissionError):
+                    tls.custom_cert()
+
+            custom = root / "custom"
+            custom.mkdir()
+            (custom / "fullchain.pem").write_text("certificate", encoding="utf-8")
+            (custom / "privkey.pem").symlink_to(target)
+            with mock.patch.dict(os.environ, {"GHAB_CERT": "", "GHAB_KEY": ""}):
+                with mock.patch.object(tls, "CUSTOM_DIR", str(custom)):
+                    with self.assertRaises(PermissionError):
+                        tls.custom_cert()
+
 @unittest.skipUnless(os.name == "nt", "Windows ACL checks run only on Windows")
 class WindowsPrivateAclTests(unittest.TestCase):
     def assert_owner_only_acl(self, path):
