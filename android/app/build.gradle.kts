@@ -14,7 +14,7 @@ android {
         targetSdk = 34
         versionCode = 15
         versionName = "2.3"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
     }
     sourceSets.getByName("main").assets.srcDir(rootProject.projectDir.parentFile.resolve("web"))
     // A permanent release key of YOUR own (see README-android.md, "امضای ثابت"): Play Protect distrusts debug-signed apps far more.
