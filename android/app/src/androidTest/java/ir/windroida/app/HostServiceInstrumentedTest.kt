@@ -14,6 +14,7 @@ import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import javax.net.ssl.HttpsURLConnection
@@ -53,6 +54,14 @@ class HostServiceInstrumentedTest {
                 certificate.checkValidity()
                 assertTrue("Host certificate must include loopback for on-device connection",
                     certificate.subjectAlternativeNames.orEmpty().any { it.size > 1 && it[1] == "127.0.0.1" })
+                val expectedFingerprint = MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+                    .joinToString("") { "%02X".format(it.toInt() and 0xff) }
+                scenario.onActivity { activity ->
+                    val reader = HostActivity::class.java.getDeclaredMethod("readCertificateFingerprint")
+                    reader.isAccessible = true
+                    assertEquals("Displayed TLS fingerprint must match the downloadable certificate",
+                        expectedFingerprint, reader.invoke(activity))
+                }
             } finally {
                 certificateDownload.disconnect()
             }
