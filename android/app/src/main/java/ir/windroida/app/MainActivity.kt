@@ -176,7 +176,8 @@ class MainActivity : Activity() {
                 return true
             }
             override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-                if (r.isForMainFrame) {                       // server unreachable / IP changed: native error screen with retry + change address
+                // stopLoading() on a blocked redirect reports ERROR_ABORTED; it is not a server outage.
+                if (r.isForMainFrame && e.errorCode != WebViewClient.ERROR_ABORTED) {
                     showError()
                 }
             }
