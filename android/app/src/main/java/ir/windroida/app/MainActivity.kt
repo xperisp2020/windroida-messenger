@@ -80,6 +80,14 @@ class MainActivity : Activity() {
         return fragment.split('&').any { it == "wdnonce=" + bridgeNonce }
     }
 
+    private fun isPinEligibleSslError(error: SslError): Boolean =
+        error.primaryError == SslError.SSL_UNTRUSTED &&
+            !error.hasError(SslError.SSL_IDMISMATCH) &&
+            !error.hasError(SslError.SSL_DATE_INVALID) &&
+            !error.hasError(SslError.SSL_EXPIRED) &&
+            !error.hasError(SslError.SSL_NOTYETVALID) &&
+            !error.hasError(SslError.SSL_INVALID)
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -124,7 +132,7 @@ class MainActivity : Activity() {
 
         web.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
-                if (e.primaryError != SslError.SSL_UNTRUSTED ||
+                if (!isPinEligibleSslError(e) ||
                     !TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), e.url)) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
                 if (cert == null) { h.cancel(); return }
