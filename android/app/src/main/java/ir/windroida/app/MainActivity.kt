@@ -45,7 +45,6 @@ import android.view.WindowManager
 import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 
 object App { @Volatile var foreground = false }
@@ -57,6 +56,10 @@ class MainActivity : Activity() {
     private var pendingPerm: PermissionRequest? = null
     private var pendingChat = 0
     private var pageReady = false
+    private var bridgeNonce = ""
+    private var internalLaunch = false
+    private var internalOnly = false
+    private var internalOnce = false
     private lateinit var splash: SplashView
     private lateinit var errBox: android.widget.LinearLayout
     private val ui = Handler(Looper.getMainLooper())
@@ -65,11 +68,28 @@ class MainActivity : Activity() {
     private var shareJson: String? = null                 // waiting for the page to pick it up
     private val shareFiles = ArrayList<Pair<File, String>>()   // file + mime, served at /__wd/share/<index>
 
+    private fun withBridgeNonce(raw: String): String {
+        val uri = Uri.parse(raw)
+        val parts = (uri.encodedFragment ?: "").split('&').filter { it.isNotEmpty() && !it.startsWith("wdnonce=") }
+        val fragment = (parts + "wdnonce=" + bridgeNonce).joinToString("&")
+        return uri.buildUpon().encodedFragment(fragment).build().toString()
+    }
+
+    private fun hasBridgeNonce(raw: String): Boolean {
+        val fragment = Uri.parse(raw).encodedFragment ?: return false
+        return fragment.split('&').any { it == "wdnonce=" + bridgeNonce }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // the user chose the native version: launching the app opens it (a one-off visit from native passes "once")
-        if (Prefs.mode(this) == "native" && !intent.getBooleanExtra("once", false)) {
+        val launchNonce = InternalWebLaunch.consume(this, intent)
+        internalLaunch = launchNonce != null
+        bridgeNonce = launchNonce ?: InternalWebLaunch.newNonce()
+        internalOnly = internalLaunch && intent.getBooleanExtra("only", false)
+        internalOnce = internalLaunch && intent.getBooleanExtra("once", false)
+        // Exported launcher/share intents cannot assert privileged one-off WebView mode.
+        if (Prefs.mode(this) == "native" && !internalLaunch) {
             // hand over a "share to Windroida" from another app together with its files
             val go = Intent(this, NativeActivity::class.java)
             if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) { go.action = intent.action; go.type = intent.type; intent.extras?.let { go.putExtras(it) }; go.clipData = intent.clipData; go.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -104,6 +124,7 @@ class MainActivity : Activity() {
 
         web.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
+                if (!TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), e.url)) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
                 if (cert == null) { h.cancel(); return }
                 val fp = Trust.sha256(cert)
@@ -119,7 +140,10 @@ class MainActivity : Activity() {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url.toString()
-                if (u.startsWith(Prefs.server(this@MainActivity))) return false
+                if (TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), u)) {
+                    if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
+                    return false
+                }
                 try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
                 return true
             }
@@ -134,7 +158,7 @@ class MainActivity : Activity() {
                     if (!r.method.equals("GET", true)) return null
                     val server = Prefs.server(this@MainActivity)
                     val u = r.url
-                    if (server.isEmpty() || !u.toString().startsWith("$server/") && u.toString() != server) return null
+                    if (!TrustedOrigin.sameOrigin(server, u.toString())) return null
                     if (server.startsWith("https://") && Prefs.pin(this@MainActivity).isEmpty()) return null   // certificate not confirmed yet
                     val path = u.path ?: "/"
                     if (path.startsWith("/__wd/share/")) {
@@ -185,21 +209,35 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 79)
 
-        pendingChat = intent.getIntExtra("chat", 0)
+        pendingChat = if (internalLaunch) intent.getIntExtra("chat", 0) else 0
         handleShare(intent)
-        if (Prefs.server(this).isEmpty()) askServer() else web.loadUrl(Prefs.server(this) + (intent.getStringExtra("hash")?.let { "#" + it } ?: ""))
+        if (Prefs.server(this).isEmpty()) askServer() else {
+            val hash = if (internalLaunch) intent.getStringExtra("hash") else null
+            web.loadUrl(withBridgeNonce(Prefs.server(this) + (hash?.let { "#" + it } ?: "")))
+        }
         NotifyService.start(this)
     }
 
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
-        if (Prefs.mode(this) == "native" && !i.getBooleanExtra("once", false) && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
+        val nonce = InternalWebLaunch.consume(this, i)
+        if (nonce == null && Prefs.mode(this) == "native" && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
             val go = Intent(this, NativeActivity::class.java).setAction(i.action).setType(i.type); i.extras?.let { go.putExtras(it) }; go.clipData = i.clipData; go.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(go); return
         }
+        if (nonce != null) {
+            bridgeNonce = nonce
+            internalLaunch = true
+            internalOnly = i.getBooleanExtra("only", false)
+            internalOnce = i.getBooleanExtra("once", false)
+            setIntent(i)
+            val hash = i.getStringExtra("hash")
+            val base = Prefs.server(this) + (hash?.let { "#" + it } ?: "")
+            if (base.isNotEmpty()) web.loadUrl(withBridgeNonce(base))
+            val chat = i.getIntExtra("chat", 0)
+            if (chat != 0) pendingChat = chat
+        }
         handleShare(i)
-        val chat = i.getIntExtra("chat", 0)
-        if (chat != 0) web.evaluateJavascript("try{openChat($chat)}catch(e){}", null)
     }
 
     private fun hideSplash() {
@@ -221,7 +259,7 @@ class MainActivity : Activity() {
         splash.visibility = View.VISIBLE
         ui.postDelayed({ hideSplash() }, 15000)
         val s = Prefs.server(this)
-        if (s.isEmpty()) askServer() else web.loadUrl(s)
+        if (s.isEmpty()) askServer() else web.loadUrl(withBridgeNonce(s))
     }
 
     /** when the network comes back while the error screen is showing, try again by itself */
@@ -251,7 +289,7 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         web.evaluateJavascript("(function(){try{return window.wdBack?window.wdBack():false}catch(e){return false}})()") { r ->
-            if (r != "true") { if (intent.getBooleanExtra("once", false)) finish() else moveTaskToBack(true) }
+            if (r != "true") { if (internalOnce) finish() else moveTaskToBack(true) }
         }
     }
 
@@ -268,7 +306,7 @@ class MainActivity : Activity() {
                     if (v != Prefs.server(this)) { Prefs.setPin(this, ""); Prefs.setToken(this, ""); NotifyService.stop(this); MediaCache.clearAll() }
                     Prefs.setServer(this, v)
                     web.clearCache(true)
-                    web.loadUrl(v)
+                    web.loadUrl(withBridgeNonce(v))
                 } else { Toast.makeText(this, "آدرس باید با https:// یا http:// شروع بشه", Toast.LENGTH_SHORT).show(); askServer(cancelable) }
             }
         if (cancelable) b.setNegativeButton("لغو", null)
@@ -283,7 +321,7 @@ class MainActivity : Activity() {
     }
 
     private fun handlePermission(r: PermissionRequest) {
-        if (!r.origin.toString().startsWith(Prefs.server(this))) { r.deny(); return }
+        if (!TrustedOrigin.sameOrigin(Prefs.server(this), r.origin.toString())) { r.deny(); return }
         val need = ArrayList<String>()
         for (res in r.resources) {
             if (res == PermissionRequest.RESOURCE_AUDIO_CAPTURE) need.add(Manifest.permission.RECORD_AUDIO)
@@ -317,7 +355,7 @@ class MainActivity : Activity() {
     private fun saveFile(url: String, rawName: String) {
         val server = Prefs.server(this)
         val u = Uri.parse(url)
-        if (server.isEmpty() || !url.startsWith("$server/media/") || u.path?.matches(Regex("/media/\\d+")) != true) {
+        if (!TrustedOrigin.sameOrigin(server, url) || u.path?.matches(Regex("/media/\\d+")) != true) {
             Toast.makeText(this, "این دانلود مجاز نیست", Toast.LENGTH_SHORT).show(); return
         }
         var name = rawName.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().trim('.').take(120)
@@ -393,7 +431,7 @@ class MainActivity : Activity() {
         val server = Prefs.server(this)
         val url = if (url0.startsWith("/")) server + url0 else url0   // the page may pass a relative path
         val u = Uri.parse(url)
-        if (server.isEmpty() || !url.startsWith("$server/media/") || u.path?.matches(Regex("/media/\\d+")) != true) {
+        if (!TrustedOrigin.sameOrigin(server, url) || u.path?.matches(Regex("/media/\\d+")) != true) {
             Toast.makeText(this, "این ویدیو مجاز نیست", Toast.LENGTH_SHORT).show(); return
         }
         startActivity(Intent(this, PlayerActivity::class.java).putExtra("url", url).putExtra("title", title))
@@ -401,16 +439,17 @@ class MainActivity : Activity() {
 
     /** the system DownloadManager can't talk to a self-signed server, so we download with the pinned certificate ourselves */
     private fun download(url: String, cd: String?, mime: String?) {
-        if (url.startsWith("blob:") || url.startsWith("data:")) {
-            Toast.makeText(this, "این نوع دانلود تو برنامه پشتیبانی نمی‌شه", Toast.LENGTH_SHORT).show(); return
+        if (url.startsWith("blob:") || url.startsWith("data:") || !TrustedOrigin.sameOrigin(Prefs.server(this), url)) {
+            Toast.makeText(this, "این دانلود مجاز نیست", Toast.LENGTH_SHORT).show(); return
         }
         Thread {
             try {
                 val c = URL(url).openConnection() as HttpURLConnection
-                if (c is HttpsURLConnection) {
-                    c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(this)).socketFactory
-                    c.hostnameVerifier = HostnameVerifier { _, _ -> true }
-                }
+                if (c is HttpsURLConnection) c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(this)).socketFactory
+                c.instanceFollowRedirects = false
+                c.connectTimeout = 10000
+                c.readTimeout = 30000
+                if (c.responseCode !in 200..299) throw RuntimeException("http " + c.responseCode)
                 val name = URLUtil.guessFileName(url, cd, mime)
                 val values = ContentValues()
                 values.put(MediaStore.Downloads.DISPLAY_NAME, name)
