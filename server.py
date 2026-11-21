@@ -1281,6 +1281,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             "members": int(members),
             "online": int(online),
             "unlimited_value": 0,
+            "is_owner": row["username"].lower() == ADMIN_USER,
         }
 
     @staticmethod
