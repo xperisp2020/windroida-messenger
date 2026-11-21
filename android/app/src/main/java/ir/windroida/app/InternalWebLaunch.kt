@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.util.Base64
 import org.json.JSONObject
-import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
@@ -63,9 +62,6 @@ object InternalWebLaunch {
                 }
                 return@synchronized null
             }
-            val expected = supplied
-            val matches = MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), supplied.toByteArray(Charsets.UTF_8))
-            if (!matches) return@synchronized null
             data.remove(supplied)
             if (!prefs.edit().putString(KEY_PENDING, data.toString()).commit()) return@synchronized null
             supplied
