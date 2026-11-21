@@ -124,7 +124,8 @@ class MainActivity : Activity() {
 
         web.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
-                if (!TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), e.url)) { h.cancel(); return }
+                if (e.primaryError != SslError.SSL_UNTRUSTED ||
+                    !TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), e.url)) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
                 if (cert == null) { h.cancel(); return }
                 val fp = Trust.sha256(cert)
