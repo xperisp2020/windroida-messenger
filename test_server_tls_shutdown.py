@@ -34,10 +34,17 @@ class ServerTlsShutdownTests(unittest.TestCase):
                     server_hostname="127.0.0.1",
                 )
                 web_client.settimeout(5)
-                with instance.conns_lock:
-                    self.assertEqual(len(instance.open_sockets), 1)
-                with instance.web._conn_lock:
-                    self.assertEqual(len(instance.web._sockets), 1)
+                deadline = time.time() + 5
+                while time.time() < deadline:
+                    with instance.conns_lock:
+                        tcp_tracked = len(instance.open_sockets)
+                    with instance.web._conn_lock:
+                        web_tracked = len(instance.web._sockets)
+                    if tcp_tracked == 1 and web_tracked == 1:
+                        break
+                    time.sleep(0.05)
+                self.assertEqual(tcp_tracked, 1, "TCP TLS socket was not tracked")
+                self.assertEqual(web_tracked, 1, "HTTPS TLS socket was not tracked")
 
                 instance.stop()
                 for label, active_client in (("TCP", client), ("HTTPS", web_client)):
