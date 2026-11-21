@@ -128,14 +128,18 @@ class SiteActivity : Activity() {
                 }
                 // External and sibling-origin iframe navigations must not inherit the privileged native bridge.
                 if (!r.isForMainFrame) return true
-                // a link back to the messenger itself (e.g. Ghab's "message" button, same host/cert, just the other port):
-                // open it inside the app instead of handing a self-signed https link to the system browser.
-                if (sameHost(u)) {
+                // A link to the messenger's exact configured origin returns to MainActivity.
+                if (TrustedOrigin.sameOrigin(Prefs.server(this@SiteActivity), u)) {
                     val hash = u.substringAfter('#', "").ifEmpty { null }
                     val nonce = InternalWebLaunch.issue(this@SiteActivity)
                     startActivity(Intent(this@SiteActivity, MainActivity::class.java).putExtra("once", true)
                         .putExtra(InternalWebLaunch.EXTRA_NONCE, nonce).also { if (hash != null) it.putExtra("hash", hash) })
                     finish(); return true
+                }
+                // A sibling service (Cloud Drive <-> Ghab) gets its own SiteActivity, not a messenger handoff.
+                if (sameHost(u)) {
+                    startActivity(Intent(this@SiteActivity, SiteActivity::class.java).putExtra("url", u))
+                    return true
                 }
                 try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
                 return true
