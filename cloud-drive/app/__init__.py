@@ -81,6 +81,8 @@ def _write_secret_file(path, value):
 def _resolve_secret(app):
     key = app.config.get("SECRET_KEY")
     if key:
+        if not isinstance(key, str) or len(key.encode("utf-8")) < 32:
+            raise RuntimeError("CD_SECRET_KEY must contain at least 32 bytes of secret material")
         return key
     f = app.config["DATA_DIR"] / "secret.key"  # generated once, random, never in the source tree
     if f.is_symlink():
