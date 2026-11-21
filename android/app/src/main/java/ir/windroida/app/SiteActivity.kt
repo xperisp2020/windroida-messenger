@@ -52,6 +52,14 @@ class SiteActivity : Activity() {
         return fragment.split('&').any { it == "wdnonce=" + bridgeNonce }
     }
 
+    private fun isPinEligibleSslError(error: SslError): Boolean =
+        error.primaryError == SslError.SSL_UNTRUSTED &&
+            !error.hasError(SslError.SSL_IDMISMATCH) &&
+            !error.hasError(SslError.SSL_DATE_INVALID) &&
+            !error.hasError(SslError.SSL_EXPIRED) &&
+            !error.hasError(SslError.SSL_NOTYETVALID) &&
+            !error.hasError(SslError.SSL_INVALID)
+
     private fun originOf(u: String): String? = TrustedOrigin.canonicalOrigin(u)
 
     /** same host (and scheme) as the Windroida server the app is set up for; the port may differ (Cloud Drive / Ghab have their own) */
@@ -87,7 +95,7 @@ class SiteActivity : Activity() {
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? =
                 try { wc.handle(r.url.toString(), r.method, r.requestHeaders ?: emptyMap()) } catch (_: Exception) { null }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
-                if (e.primaryError != SslError.SSL_UNTRUSTED) { h.cancel(); return }
+                if (!isPinEligibleSslError(e)) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
                 if (TrustedOrigin.sameHostAndScheme(Prefs.server(this@SiteActivity), e.url) &&
                     cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
