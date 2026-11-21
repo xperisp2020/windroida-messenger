@@ -181,7 +181,7 @@ class HostService : Service() {
         if (stamp.isFile && runCatching { stamp.readText() == version }.getOrDefault(false)) return
         if (webDir.exists()) webDir.deleteRecursively()
         webDir.mkdirs()
-        copyAssetTree("", webDir)
+        copyAssetTree("windroida-web", webDir)
         stamp.writeText(version)
     }
 
