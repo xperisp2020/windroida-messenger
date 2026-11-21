@@ -564,6 +564,8 @@ class MainActivity : Activity() {
             if (!valid(nonce)) return
             runOnUiThread {
                 try {
+                    // This bridge is for web destinations only; never let page script trigger arbitrary Android intent schemes.
+                    if (TrustedOrigin.canonicalOrigin(url) == null) return@runOnUiThread
                     val s = Prefs.server(this@MainActivity)
                     val sameHost = TrustedOrigin.sameHostAndScheme(s, url)
                     if (sameHost) startActivity(Intent(this@MainActivity, SiteActivity::class.java).putExtra("url", url))
