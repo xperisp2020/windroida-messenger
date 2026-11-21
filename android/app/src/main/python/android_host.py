@@ -3,10 +3,12 @@ import contextlib
 import io
 import json
 import os
+import threading
 from pathlib import Path
 
 _server = None
 _runtime_root = None
+_lock = threading.RLock()
 
 
 def _configure_paths(files_dir):
@@ -38,70 +40,73 @@ def _configure_paths(files_dir):
 def start_host(files_dir, lan_addresses=""):
     """Start the same TCP and HTTPS/WebSocket server used by the Windows launcher."""
     global _server
-    if _server is not None:
-        return json.dumps({
+    with _lock:
+        if _server is not None:
+            return json.dumps({
             "running": True,
             "tcp_port": _server.port,
             "web_port": _server.web_port,
             "tls": bool(_server.ssl_ctx),
         })
 
-    root = _configure_paths(files_dir)
-    if not (root / "web" / "index.html").is_file():
-        raise RuntimeError("Windroida web client assets were not installed")
+        root = _configure_paths(files_dir)
+        if not (root / "web" / "index.html").is_file():
+            raise RuntimeError("Windroida web client assets were not installed")
 
-    addresses = [x.strip() for x in str(lan_addresses).split(",") if x.strip()]
-    if addresses:
-        os.environ["WINDROIDA_CERT_NAMES"] = ",".join(addresses)
+        addresses = [x.strip() for x in str(lan_addresses).split(",") if x.strip()]
+        if addresses:
+            os.environ["WINDROIDA_CERT_NAMES"] = ",".join(addresses)
 
-    from server import WindroidaServer
+        from server import WindroidaServer
 
-    instance = WindroidaServer(
+        instance = WindroidaServer(
         host="0.0.0.0",
         port=8765,
         tls=True,
         db_path=root / "data" / "windroida.db",
         web_port=8081,
     )
-    try:
-        # Suppress the desktop launcher's console output: it includes the initial
-        # admin password. The password remains in the app-private 0600 file.
-        with contextlib.redirect_stdout(io.StringIO()):
-            instance.seed_admin()
-        instance.start()
-        if not instance.ssl_ctx or not instance.web:
-            raise RuntimeError("Secure HTTPS could not be initialized; hosting stopped")
-        _server = instance
-        return json.dumps({
-            "running": True,
-            "tcp_port": instance.port,
-            "web_port": instance.web_port,
-            "tls": True,
-        })
-    except Exception:
         try:
-            instance.stop()
+            # Suppress the desktop launcher's console output: it includes the initial
+        # admin password. The password remains in the app-private 0600 file.
+            with contextlib.redirect_stdout(io.StringIO()):
+                instance.seed_admin()
+            instance.start()
+            if not instance.ssl_ctx or not instance.web:
+                raise RuntimeError("Secure HTTPS could not be initialized; hosting stopped")
+            _server = instance
+            return json.dumps({
+                "running": True,
+                "tcp_port": instance.port,
+                "web_port": instance.web_port,
+                "tls": True,
+            })
         except Exception:
-            pass
-        raise
+            try:
+                instance.stop()
+            except Exception:
+                pass
+            raise
 
 
 def stop_host():
     global _server
-    instance, _server = _server, None
-    if instance is None:
+    with _lock:
+        instance, _server = _server, None
+        if instance is None:
+            return True
+        instance.stop()
         return True
-    instance.stop()
-    return True
 
 
 def host_status():
-    instance = _server
-    if instance is None:
-        return json.dumps({"running": False})
-    return json.dumps({
-        "running": True,
-        "tcp_port": instance.port,
-        "web_port": instance.web_port,
-        "tls": bool(instance.ssl_ctx),
-    })
+    with _lock:
+        instance = _server
+        if instance is None:
+            return json.dumps({"running": False})
+        return json.dumps({
+            "running": True,
+            "tcp_port": instance.port,
+            "web_port": instance.web_port,
+            "tls": bool(instance.ssl_ctx),
+        })
