@@ -1,4 +1,4 @@
-import sys, tempfile, base64, json, ssl, urllib.request, urllib.error, time
+import sys, tempfile, base64, json, ssl, urllib.request, urllib.error, time, hmac, hashlib
 from pathlib import Path
 sys.path.insert(0,".")
 import common
@@ -19,6 +19,18 @@ voice_result=A.call("send",chat_id=pc,text="",file={"name":"voice.ogg","data":ba
     "voice":{"dur":1.0,"wave":[1,2,3]}})
 voice_msg=voice_result["message"]["id"]
 ok("voice fixture is a voice message", bool(voice_result["message"].get("file",{}).get("voice")))
+share_from, share_to, share_text = "alice", "bobby", "persisted share replay fixture"
+share_exp, share_nonce = int(time.time()) + 60, "persisted-replay-001"
+share_body = f"share:{share_from}:{share_to}:{share_exp}:{share_nonce}:{hashlib.sha256(share_text.encode()).hexdigest()}"
+share_sig = hmac.new(S._ghab_secret.encode(), share_body.encode(), "sha256").hexdigest()
+share_req = {"from": share_from, "to": share_to, "text": share_text,
+             "exp": share_exp, "nonce": share_nonce, "sig": share_sig}
+share_first = S.ghab_share(share_req)
+restarted_server = srv.WindroidaServer("127.0.0.1", 0, db_path=tmp/"t.db", web_port=None)
+share_second = restarted_server.ghab_share(share_req)
+ok("Ghab share replay blocked after server recreation",
+   share_first[0] == 200 and share_second[0] == 400 and share_second[1].get("error") == "replay",
+   (share_first, share_second))
 grp=A.call("create_group",title="تیم",usernames=["bobby"])["chat"]["id"]
 gm=A.call("send",chat_id=grp,text="پیام گروه")["message"]["id"]
 mc=M.call("open_private",username="gina")["chat"]["id"]
