@@ -31,6 +31,16 @@ class TrustedOriginTest {
         assertFalse(TrustedOrigin.sameHostAndScheme("https://example.com", "http://example.com:8084"))
     }
 
+    @Test fun serviceOriginsRequireKnownPorts() {
+        val base = "https://example.com:8081"
+        assertTrue(TrustedOrigin.isAllowedService(base, "https://example.com:8081/", setOf(8082, 8084)))
+        assertTrue(TrustedOrigin.isAllowedService(base, "https://example.com:8082/", setOf(8082, 8084)))
+        assertTrue(TrustedOrigin.isAllowedService(base, "https://example.com:8084/", setOf(8082, 8084)))
+        assertFalse(TrustedOrigin.isAllowedService(base, "https://example.com:9999/", setOf(8082, 8084)))
+        assertFalse(TrustedOrigin.isAllowedService(base, "http://example.com:8082/", setOf(8082, 8084)))
+        assertFalse(TrustedOrigin.isAllowedService(base, "https://attacker.example:8082/", setOf(8082, 8084)))
+    }
+
     @Test fun rejectsNonHttpSchemesAndMalformedAuthorities() {
         assertFalse(TrustedOrigin.sameOrigin("https://example.com", "javascript:alert(1)"))
         assertFalse(TrustedOrigin.sameOrigin("https://example.com", "https://example.com:99999/"))
