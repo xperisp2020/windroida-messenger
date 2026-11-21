@@ -249,6 +249,12 @@ class MainActivity : Activity() {
             if (chat != 0) pendingChat = chat
         }
         handleShare(i)
+        // Notification taps in the regular WebView mode carry only a chat id; preserve that navigation
+        // without treating any external intent extras as an authenticated one-off launch.
+        if (nonce == null) {
+            val chat = i.getIntExtra("chat", 0)
+            if (chat > 0) web.evaluateJavascript("try{openChat($chat)}catch(e){}", null)
+        }
     }
 
     private fun hideSplash() {
