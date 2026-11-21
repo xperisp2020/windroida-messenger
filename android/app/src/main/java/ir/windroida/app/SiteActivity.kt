@@ -97,7 +97,7 @@ class SiteActivity : Activity() {
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
                 if (!isPinEligibleSslError(e)) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
-                if (TrustedOrigin.sameHostAndScheme(Prefs.server(this@SiteActivity), e.url) &&
+                if (TrustedOrigin.sameOrigin(origin, e.url) &&
                     cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
                 else {
                     h.cancel()
@@ -110,6 +110,8 @@ class SiteActivity : Activity() {
                     if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
                     return false
                 }
+                // External and sibling-origin iframe navigations must not inherit the privileged native bridge.
+                if (!r.isForMainFrame) return true
                 // a link back to the messenger itself (e.g. Ghab's "message" button, same host/cert, just the other port):
                 // open it inside the app instead of handing a self-signed https link to the system browser.
                 if (sameHost(u)) {
