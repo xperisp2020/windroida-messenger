@@ -14,6 +14,7 @@ android {
         targetSdk = 34
         versionCode = 16
         versionName = "2.4"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/host-assets"))
@@ -96,4 +97,7 @@ dependencies {
     // Telegram's animated emoji (Lottie files in assets/emoji)
     implementation("com.airbnb.android:lottie:6.4.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
 }
