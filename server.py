@@ -256,7 +256,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.web_port, self.web = web_port, None
         self.db_path = db_path or common.DB_PATH
         self.sessions = defaultdict(list)       # uid -> [Conn]
-        self.sessions_lock = threading.Lock()
+        self.sessions_lock = threading.RLock()
         self.ip_hits = defaultdict(deque)       # ip -> timestamps of auth attempts
         self.send_hits = defaultdict(deque)     # uid -> timestamps of sent messages
         self._upload_inflight = 0               # bytes currently being streamed to disk by /upload (all users combined)
@@ -989,31 +989,37 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             raise Fail("این نام کاربری قبلاً گرفته شده")
         ps, ph = hash_secret(password)
         ss, sh = hash_secret(answer)
-        try:
-            conn.db.execute("BEGIN IMMEDIATE")
+        with self.sessions_lock:
+            limits = host_capacity.get_limits(conn.db)
             try:
-                host_capacity.check_registration_capacity(conn.db, ADMIN_USER)
+                host_capacity.check_online_capacity(self.sessions, None, limits["max_online"])
             except host_capacity.CapacityReached as e:
-                conn.db.rollback()
                 raise Fail(str(e))
-            cur = conn.db.execute(
-                "INSERT INTO users(username, display_name, pw_salt, pw_hash, sec_question, sec_salt, sec_hash,"
-                " created_at) VALUES (?,?,?,?,?,?,?,?)", (username, display, ps, ph, question, ss, sh, now()))
-            conn.db.commit()
-        except sqlite3.IntegrityError:
-            conn.db.rollback()
-            raise Fail("این نام کاربری قبلاً گرفته شده")
-        except Exception:
-            if conn.db.in_transaction:
+            try:
+                conn.db.execute("BEGIN IMMEDIATE")
+                try:
+                    host_capacity.check_registration_capacity(conn.db, ADMIN_USER)
+                except host_capacity.CapacityReached as e:
+                    conn.db.rollback()
+                    raise Fail(str(e))
+                cur = conn.db.execute(
+                    "INSERT INTO users(username, display_name, pw_salt, pw_hash, sec_question, sec_salt, sec_hash,"
+                    " created_at) VALUES (?,?,?,?,?,?,?,?)", (username, display, ps, ph, question, ss, sh, now()))
+                conn.db.commit()
+            except sqlite3.IntegrityError:
                 conn.db.rollback()
-            raise
-        row = conn.db.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
-        try:
-            self._ensure_channel(conn.db)
-        except sqlite3.Error:
-            pass
-        log("registered", username)
-        return self._login_ok(conn, row, device=req.get("device", ""))
+                raise Fail("این نام کاربری قبلاً گرفته شده")
+            except Exception:
+                if conn.db.in_transaction:
+                    conn.db.rollback()
+                raise
+            row = conn.db.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
+            try:
+                self._ensure_channel(conn.db)
+            except sqlite3.Error:
+                pass
+            log("registered", username)
+            return self._login_ok(conn, row, device=req.get("device", ""))
 
     def _check_lock(self, row):
         if row["locked_until"] > now():
