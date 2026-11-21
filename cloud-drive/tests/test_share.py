@@ -19,7 +19,11 @@ class ShareTests(Base):
             self.assertEqual(r.data, b"public content")
         finally:
             r.close()
-        self.assertEqual(anon.get("/s/" + s["token"]).status_code, 200)
+        page = anon.get("/s/" + s["token"])
+        try:
+            self.assertEqual(page.status_code, 200)
+        finally:
+            page.close()
         self.assertEqual(c.get("/api/shares").get_json()["items"][0]["downloads"], 1)
 
     def test_password_protected_link(self):
