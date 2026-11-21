@@ -99,7 +99,7 @@ class HostActivity : Activity() {
             else toast("اطلاعات رمز اولیه موجود نیست؛ از رمز فعلی حساب مالک استفاده کن")
         }
         column.addView(copyCredentialsButton)
-        deleteCredentialsButton = button("حذف امن فایل رمز اولیه") {
+        deleteCredentialsButton = button("حذف فایل رمز اولیه") {
             AlertDialog.Builder(this)
                 .setTitle("حذف رمز اولیه")
                 .setMessage("فایل رمز اولیه از فضای خصوصی برنامه حذف شود؟ قبل از حذف، مطمئن شو رمز مالک را یادداشت کرده‌ای.")
