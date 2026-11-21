@@ -3,6 +3,7 @@ import os
 import secrets
 import stat
 import subprocess
+import tempfile
 
 VERSION = '2.4.3'
 PORT = int(os.environ.get('GHAB_PORT', 8084))
@@ -50,22 +51,42 @@ def _restrict_session_secret(path):
                        check=True, capture_output=True, text=True)
 
 
+def _write_session_secret(path, value):
+    """Atomically write a session secret with restrictive permissions before secret bytes are written."""
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(prefix='.session-secret-', suffix='.tmp', dir=directory)
+    try:
+        if os.name == 'posix':
+            os.fchmod(fd, 0o600)
+        elif os.name == 'nt':
+            _restrict_session_secret(tmp)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(value)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.name == 'posix' and stat.S_IMODE(os.stat(tmp).st_mode) != 0o600:
+            raise PermissionError(f'temporary session secret is not mode 600: {tmp}')
+        os.replace(tmp, path)
+        _restrict_session_secret(path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def secret_key():
     p = os.path.join(DATA_DIR, 'secret.key')
     os.makedirs(DATA_DIR, exist_ok=True)
     if os.path.islink(p):
         raise PermissionError(f'refusing symlink for session secret: {p}')
-    try:
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        fd = None
-    if fd is not None:
-        os.close(fd)
-        _restrict_session_secret(p)
-        with open(p, 'w', encoding='utf-8') as f:
-            f.write(secrets.token_hex(32))
-            f.flush()
-            os.fsync(f.fileno())
+    if not os.path.exists(p):
+        _write_session_secret(p, secrets.token_hex(32))
     _restrict_session_secret(p)
     with open(p, encoding='utf-8') as f:
         value = f.read().strip()
