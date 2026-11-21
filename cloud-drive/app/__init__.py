@@ -2,6 +2,9 @@
 import logging
 import os
 import secrets
+import stat
+import subprocess
+import tempfile
 import threading
 import time
 from datetime import timedelta
@@ -20,18 +23,74 @@ from .storage import LocalStorage
 __version__ = "1.0.0"
 
 
+def _restrict_secret_file(path):
+    """Restrict an existing session-signing secret and fail closed on permission errors."""
+    if path.is_symlink():
+        raise PermissionError("refusing symlink for Cloud Drive session secret: %s" % path)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode != 0o600:
+            raise PermissionError("Cloud Drive session secret permissions are %o, expected 600" % mode)
+    elif os.name == "nt":
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(["icacls", str(path), "/reset"], check=True, capture_output=True, text=True)
+        subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", "%s:(F)" % account],
+                       check=True, capture_output=True, text=True)
+
+
+def _write_secret_file(path, value):
+    """Atomically create a private session secret; lock down the temporary file before writing secret bytes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".session-secret-", suffix=".tmp", dir=str(path.parent))
+    try:
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        elif os.name == "nt":
+            _restrict_secret_file(__import__("pathlib").Path(tmp))
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if os.name == "posix" and stat.S_IMODE(os.stat(tmp).st_mode) != 0o600:
+            raise PermissionError("temporary Cloud Drive session secret is not mode 600")
+        os.replace(tmp, path)
+        _restrict_secret_file(path)
+        if os.name == "posix":
+            try:
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _resolve_secret(app):
     key = app.config.get("SECRET_KEY")
     if key:
         return key
     f = app.config["DATA_DIR"] / "secret.key"  # generated once, random, never in the source tree
+    if f.is_symlink():
+        raise PermissionError("refusing symlink for Cloud Drive session secret: %s" % f)
     if not f.exists():
-        f.write_text(secrets.token_hex(32))
-        try:
-            os.chmod(f, 0o600)
-        except OSError:
-            pass
-    return f.read_text().strip()
+        _write_secret_file(f, secrets.token_hex(32))
+    _restrict_secret_file(f)
+    value = f.read_text(encoding="utf-8").strip()
+    if len(value) < 32:
+        raise RuntimeError("Cloud Drive session secret is missing or too short")
+    return value
 
 
 def run_housekeeping(app):
