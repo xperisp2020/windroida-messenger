@@ -36,7 +36,11 @@ object Trust {
     fun pinnedTm(pin: String): X509TrustManager = object : X509TrustManager {
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
         override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
-            if (chain.isEmpty() || sha256(chain[0]) != pin) throw CertificateException("certificate does not match the pinned fingerprint")
+            if (chain.isEmpty()) throw CertificateException("empty certificate chain")
+            try { chain[0].checkValidity() } catch (e: java.security.cert.CertificateException) {
+                throw CertificateException("pinned certificate is not currently valid", e)
+            }
+            if (sha256(chain[0]) != pin) throw CertificateException("certificate does not match the pinned fingerprint")
         }
         override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
     }
