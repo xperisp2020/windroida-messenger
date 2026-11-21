@@ -1265,9 +1265,10 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         row = conn.db.execute("SELECT username FROM users WHERE id=?", (conn.uid,)).fetchone()
         if not row:
             raise Fail("حساب معتبر نیست")
+        is_owner = row["username"].lower() == ADMIN_USER
         action = str(req.get("action") or "get").lower()
         if action == "set":
-            if row["username"].lower() != ADMIN_USER:
+            if not is_owner:
                 raise Fail("فقط مالک سرور می‌تواند ظرفیت را تغییر دهد")
             try:
                 with self.capacity_lock:
@@ -1277,6 +1278,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             except host_capacity.InvalidCapacity:
                 raise Fail("ظرفیت نامعتبر است؛ سقف اعضا ۰ تا ۱۰۰۰۰۰ و سقف آنلاین ۰ تا ۵۰۰۰ است")
         elif action == "get":
+            if not is_owner:
+                raise Fail("فقط مالک سرور می‌تواند اطلاعات ظرفیت را مشاهده کند")
             limits = host_capacity.get_limits(conn.db)
         else:
             raise Fail("عملیات ظرفیت نامعتبر است")
@@ -1290,7 +1293,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             "members": int(members),
             "online": int(online),
             "unlimited_value": 0,
-            "is_owner": row["username"].lower() == ADMIN_USER,
+            "is_owner": is_owner,
         }
 
     @staticmethod
