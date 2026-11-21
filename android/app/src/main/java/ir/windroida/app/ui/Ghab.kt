@@ -121,7 +121,6 @@ class GhabClient(private val a: NativeActivity) {
         val pin = ir.windroida.app.Prefs.pin(a)
         val client = okhttp3.OkHttpClient.Builder()
             .sslSocketFactory(ir.windroida.app.Trust.pinnedContext(pin).socketFactory, ir.windroida.app.Trust.pinnedTm(pin))
-            .hostnameVerifier { _, _ -> true }
             .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS).readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
         val ok = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(client)
         http?.cookie?.takeIf { it.isNotEmpty() }?.let { ok.setDefaultRequestProperties(mapOf("Cookie" to it)) }
