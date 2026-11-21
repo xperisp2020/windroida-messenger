@@ -77,11 +77,14 @@ class TestSso(SsoBase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.get_json()["error"], "expired")
 
-    def test_token_cannot_be_replayed(self):
+    def test_token_cannot_be_replayed_after_app_recreation(self):
         tok = self.token("grace")
         r1 = self.client.get("/sso?t=" + tok)
         self.assertEqual(r1.status_code, 302)
-        c2 = self.app.test_client()
+        # A new app instance shares only the persistent database, not process-local replay state.
+        restarted = create_app(DATA_DIR=self.tmp, TESTING=True, HOUSEKEEPING=False, SCRYPT_N=1024,
+                               SSO_SECRET=self.secret)
+        c2 = restarted.test_client()
         r2 = c2.get("/sso?t=" + tok)
         self.assertEqual(r2.status_code, 400)
         self.assertEqual(r2.get_json()["error"], "bad_token")
