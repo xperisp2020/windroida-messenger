@@ -1,16 +1,28 @@
-"""Desktop-side checks for Android host path wiring before APK packaging."""
+"""Integration checks for Android host path wiring and embedded server lifecycle."""
+import json
+import socket
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
 PYTHON_DIR = Path(__file__).parent / "android" / "app" / "src" / "main" / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 class AndroidHostRuntimeTests(unittest.TestCase):
-    def test_server_and_web_gateway_use_app_private_runtime_paths(self):
+    def test_private_paths_and_embedded_server_start_stop(self):
         with tempfile.TemporaryDirectory(prefix="windroida-android-host-") as temp:
             import android_host
 
@@ -30,6 +42,23 @@ class AndroidHostRuntimeTests(unittest.TestCase):
             self.assertEqual(Path(webgw.WEB_DIR), root / "web")
             self.assertTrue((root / "web" / "index.html").is_file())
             self.assertTrue((root / "data").is_dir())
+
+            tcp_port, web_port = free_port(), free_port()
+            result = json.loads(android_host.start_host(
+                temp, "127.0.0.1", tcp_port, web_port
+            ))
+            self.assertTrue(result["running"])
+            self.assertTrue(result["tls"])
+            self.assertEqual(result["tcp_port"], tcp_port)
+            self.assertEqual(result["web_port"], web_port)
+            self.assertTrue((root / "data" / "admin_password.txt").is_file())
+            self.assertTrue(json.loads(android_host.host_status())["running"])
+
+            android_host.stop_host()
+            self.assertFalse(json.loads(android_host.host_status())["running"])
+            for port in (tcp_port, web_port):
+                with self.assertRaises(OSError):
+                    socket.create_connection(("127.0.0.1", port), timeout=1)
 
 
 if __name__ == "__main__":
