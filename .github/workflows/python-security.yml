@@ -29,6 +29,7 @@ jobs:
           node --check web/room.js
           node --check ghab/web/static/app.js
           node --check cloud-drive/app/static/js/common.js
+          node tests/test_webview_bridge.js
       - name: Run private-key permission tests
         run: python -m unittest -v test_private_key_permissions.py
       - name: Run Ghab security tests
