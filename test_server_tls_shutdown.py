@@ -2,6 +2,7 @@
 import socket
 import ssl
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,15 @@ class ServerTlsShutdownTests(unittest.TestCase):
                 except (OSError, ssl.SSLError):
                     received = b""
                 self.assertEqual(received, b"", "server stop must close the established TLS client")
+
+                deadline = time.time() + 5
+                while time.time() < deadline:
+                    with instance.conns_lock:
+                        remaining = len(instance.open_sockets)
+                    if remaining == 0:
+                        break
+                    time.sleep(0.05)
+                self.assertEqual(remaining, 0, "server retained TLS socket references after shutdown")
 
                 with self.assertRaises(OSError):
                     socket.create_connection(("127.0.0.1", port), timeout=1)
