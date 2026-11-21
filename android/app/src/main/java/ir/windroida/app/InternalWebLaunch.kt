@@ -1,20 +1,18 @@
 package ir.windroida.app
 
-import android.content.Context
 import android.content.Intent
+import android.util.Base64
 import java.security.MessageDigest
 import java.security.SecureRandom
-import android.util.Base64
 
 /**
- * Authenticates one-off WebView launches initiated by the app itself.
- * The nonce is stored in app-private preferences and consumed exactly once;
- * exported Activity extras alone are never trusted.
+ * Authenticates one-off WebView launches initiated by this app process.
+ * The nonce is random, in-memory, and consumed exactly once; exported Activity extras alone are never trusted.
+ * If Android kills the process between issuing and consuming it, the launch safely fails closed.
  */
 object InternalWebLaunch {
     const val EXTRA_NONCE = "wd_internal_nonce"
-    private const val PREFS = "wd_internal_launch"
-    private const val KEY_PENDING = "pending_nonce"
+    @Volatile private var pendingNonce: String? = null
 
     fun newNonce(): String {
         val bytes = ByteArray(32)
@@ -22,26 +20,24 @@ object InternalWebLaunch {
         return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
     }
 
-    fun issue(context: Context): String {
+    @Synchronized
+    fun issue(): String {
         val nonce = newNonce()
-        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_PENDING, nonce).commit()) {
-            "Could not persist internal WebView launch nonce"
-        }
+        pendingNonce = nonce
         return nonce
     }
 
-    /** Returns the nonce only when it matches the app-private pending value; consumes it once. */
-    fun consume(context: Context, intent: Intent?): String? {
+    /** Returns the nonce only when it matches the app-process pending value; consumes it once. */
+    @Synchronized
+    fun consume(intent: Intent?): String? {
         val supplied = intent?.getStringExtra(EXTRA_NONCE) ?: return null
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val expected = prefs.getString(KEY_PENDING, null) ?: return null
+        val expected = pendingNonce ?: return null
         val matches = MessageDigest.isEqual(
             expected.toByteArray(Charsets.UTF_8),
             supplied.toByteArray(Charsets.UTF_8)
         )
         if (!matches) return null
-        if (!prefs.edit().remove(KEY_PENDING).commit()) return null
+        pendingNonce = null
         return supplied
     }
 }
