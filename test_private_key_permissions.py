@@ -1,4 +1,5 @@
 """Regression tests for private-key and signing-secret file permissions."""
+import builtins
 import os
 import stat
 import shutil
@@ -126,6 +127,36 @@ class PrivateFilePermissionTests(unittest.TestCase):
 
             with mock.patch("server.subprocess.run", side_effect=inspect_created_key):
                 self.assertTrue(server.WindroidaServer._cert_openssl(crt, key, ["localhost"]))
+            self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
+
+    def test_ghab_openssl_fallback_key_is_private_at_creation(self):
+        if not shutil.which("openssl"):
+            self.skipTest("openssl is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            cert_dir = Path(tmp)
+            custom_dir = cert_dir / "custom"
+            real_import = builtins.__import__
+            real_run = subprocess.run
+            key = cert_dir / "key.pem"
+
+            def without_cryptography(name, *args, **kwargs):
+                if name == "cryptography" or name.startswith("cryptography."):
+                    raise ImportError("forced OpenSSL fallback test")
+                return real_import(name, *args, **kwargs)
+
+            def inspect_created_key(*args, **kwargs):
+                result = real_run(*args, **kwargs)
+                if args and args[0] and args[0][0] == "openssl":
+                    self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
+                return result
+
+            with mock.patch.object(tls, "CERT_DIR", str(cert_dir)), \
+                 mock.patch.object(tls, "CUSTOM_DIR", str(custom_dir)), \
+                 mock.patch.dict(os.environ, {"GHAB_CERT": "", "GHAB_KEY": ""}), \
+                 mock.patch("builtins.__import__", side_effect=without_cryptography), \
+                 mock.patch("ghab.server.tls.subprocess.run", side_effect=inspect_created_key):
+                result = tls.ensure_cert("localhost")
+            self.assertIsNotNone(result)
             self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
 
     def test_ghab_custom_tls_rejects_symlinked_private_keys(self):
