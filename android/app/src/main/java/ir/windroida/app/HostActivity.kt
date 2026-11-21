@@ -17,6 +17,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
+import java.security.MessageDigest
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 
 /** Local controls for starting and managing this phone's Windroida host. */
 class HostActivity : Activity() {
@@ -27,6 +30,8 @@ class HostActivity : Activity() {
     private lateinit var stopButton: Button
     private lateinit var copyAddressButton: Button
     private lateinit var copyCertificateButton: Button
+    private lateinit var certificateFingerprint: TextView
+    private lateinit var copyFingerprintButton: Button
     private lateinit var copyCredentialsButton: Button
     private lateinit var deleteCredentialsButton: Button
     private lateinit var useNativeButton: Button
@@ -95,8 +100,18 @@ class HostActivity : Activity() {
             else toast("ابتدا میزبانی را شروع کن")
         }
         column.addView(copyCertificateButton)
+        certificateFingerprint = text("اثر انگشت گواهی: پس از شروع نمایش داده می‌شود.", 12f)
+        certificateFingerprint.textDirection = TextView.TEXT_DIRECTION_LTR
+        certificateFingerprint.setTextIsSelectable(true)
+        column.addView(certificateFingerprint)
+        copyFingerprintButton = button("کپی اثر انگشت گواهی") {
+            val value = certificateFingerprint()
+            if (value.isNotBlank()) copy(value, "اثر انگشت گواهی کپی شد")
+            else toast("گواهی هنوز آماده نیست")
+        }
+        column.addView(copyFingerprintButton)
         column.addView(text(
-            "لینک دریافت گواهی فقط برای راه‌اندازی اولیه از HTTP استفاده می‌کند؛ خود پیام‌رسان فقط از HTTPS امن استفاده می‌کند. در ویندوز گواهی را در مخزن گواهی‌های مورد اعتماد نصب کن. برنامه اندروید اثر انگشت گواهی را هنگام اتصال تأیید می‌کند.",
+            "لینک دریافت گواهی فقط برای راه‌اندازی اولیه از HTTP استفاده می‌کند؛ خود پیام‌رسان فقط از HTTPS امن استفاده می‌کند. پیش از نصب گواهی در ویندوز، اثر انگشت فایل دریافت‌شده را با مقدار نمایش‌داده‌شده در این صفحه مقایسه کن.",
             12f
         ))
         column.addView(text("حساب مالک سرور", 18f, true))
@@ -172,6 +187,9 @@ class HostActivity : Activity() {
             if (ips.isEmpty()) "آدرس شبکه پیدا نشد؛ اتصال محلی: https://127.0.0.1:$port"
             else ips.joinToString("\n") { "https://$it:$port" }
         } else "پس از شروع میزبانی، آدرس‌های اتصال اینجا نمایش داده می‌شوند."
+        val fingerprint = certificateFingerprint()
+        certificateFingerprint.text = if (fingerprint.isBlank()) "اثر انگشت گواهی: در دسترس نیست" else "SHA-256: $fingerprint"
+        copyFingerprintButton.isEnabled = running && fingerprint.isNotBlank()
         val credentialsText = adminCredentials()
         credentials.text = if (credentialsText.isNotBlank()) credentialsText
         else "رمز اولیه جدیدی وجود ندارد. از رمز فعلی حساب مالک استفاده کن."
@@ -195,6 +213,20 @@ class HostActivity : Activity() {
     private fun firstCertificateUrl(): String {
         val url = firstHostUrl()
         return if (url.isBlank()) "" else url.replaceFirst("https://", "http://") + "/windroida.crt"
+    }
+
+    private fun certificateFingerprint(): String {
+        val file = File(filesDir, "windroida/data/server.crt")
+        return try {
+            if (!file.isFile) return ""
+            val certificate = file.inputStream().use {
+                CertificateFactory.getInstance("X.509").generateCertificate(it) as X509Certificate
+            }
+            MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+                .joinToString(":") { "%02X".format(it) }
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun adminCredentials(): String {
