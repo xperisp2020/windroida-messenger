@@ -38,7 +38,13 @@ fun fetchFingerprint(host: String, port: Int, timeoutMs: Int = 8000): String {
     var got = ""
     val tm = object : X509TrustManager {
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) { if (chain.isNotEmpty()) got = certFingerprint(chain[0]) }
+        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+            if (chain.isEmpty()) throw CertificateException("empty certificate chain")
+            try { chain[0].checkValidity() } catch (e: java.security.cert.CertificateException) {
+                throw CertificateException("server certificate is not currently valid", e)
+            }
+            got = certFingerprint(chain[0])
+        }
         override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
     }
     val ctx = SSLContext.getInstance("TLS")
@@ -48,6 +54,8 @@ fun fetchFingerprint(host: String, port: Int, timeoutMs: Int = 8000): String {
         raw.connect(InetSocketAddress(host, port), timeoutMs)
         raw.soTimeout = timeoutMs
         val s = ctx.socketFactory.createSocket(raw, host, port, true) as SSLSocket
+        // The initial trust ceremony must still reject a certificate issued for a different host.
+        s.sslParameters = s.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
         s.startHandshake()
         s.close()
     } finally { try { raw.close() } catch (_: Exception) {} }
