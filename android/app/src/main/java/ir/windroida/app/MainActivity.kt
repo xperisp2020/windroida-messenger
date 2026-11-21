@@ -149,6 +149,14 @@ class MainActivity : Activity() {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url.toString()
+                val scheme = r.url.scheme?.lowercase()
+                if (scheme != "http" && scheme != "https") {
+                    // Only explicit user clicks may open ordinary phone/email handlers; block intent:, file:, javascript:, etc.
+                    if (r.isForMainFrame && r.hasGesture() && (scheme == "mailto" || scheme == "tel")) {
+                        try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
+                    }
+                    return true
+                }
                 if (TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), u)) {
                     if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
                     return false
