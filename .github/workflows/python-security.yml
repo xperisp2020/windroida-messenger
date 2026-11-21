@@ -31,3 +31,17 @@ jobs:
         run: python test_security.py
       - name: Run gateway security tests
         run: python pentest_gateway.py
+  windows-secret-acl:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-all.txt
+      - name: Verify owner-only Windows ACLs
+        run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
