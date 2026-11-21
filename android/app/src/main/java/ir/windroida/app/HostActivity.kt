@@ -194,7 +194,7 @@ class HostActivity : Activity() {
 
     private fun firstCertificateUrl(): String {
         val url = firstHostUrl()
-        return if (url.isBlank()) "" else "$url/windroida.crt"
+        return if (url.isBlank()) "" else url.replaceFirst("https://", "http://") + "/windroida.crt"
     }
 
     private fun adminCredentials(): String {
