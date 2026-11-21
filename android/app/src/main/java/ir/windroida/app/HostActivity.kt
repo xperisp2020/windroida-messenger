@@ -32,6 +32,7 @@ class HostActivity : Activity() {
     private lateinit var copyCertificateButton: Button
     private lateinit var fingerprintText: TextView
     private lateinit var copyFingerprintButton: Button
+    private lateinit var shareConnectionButton: Button
     private lateinit var copyCredentialsButton: Button
     private lateinit var deleteCredentialsButton: Button
     private lateinit var useNativeButton: Button
@@ -110,6 +111,23 @@ class HostActivity : Activity() {
             else toast("گواهی هنوز آماده نیست")
         }
         column.addView(copyFingerprintButton)
+        shareConnectionButton = button("اشتراک جزئیات اتصال") {
+            val address = firstHostUrl()
+            val certificateUrl = firstCertificateUrl()
+            val fingerprint = readCertificateFingerprint()
+            if (address.isBlank() || certificateUrl.isBlank() || fingerprint.isBlank()) {
+                toast("ابتدا میزبانی را شروع کن")
+            } else {
+                val details = "سرور Windroida Messenger\nآدرس اتصال: $address\nگواهی TLS: $certificateUrl\nSHA-256: $fingerprint\nپیش از نصب گواهی در ویندوز، اثر انگشت را با دستور certutil -hashfile windroida.crt SHA256 بررسی کن."
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "Windroida Messenger - Server connection")
+                    putExtra(Intent.EXTRA_TEXT, details)
+                }
+                startActivity(Intent.createChooser(send, "اشتراک جزئیات اتصال"))
+            }
+        }
+        column.addView(shareConnectionButton)
         column.addView(text(
             "لینک دریافت گواهی فقط برای راه‌اندازی اولیه از HTTP استفاده می‌کند؛ خود پیام‌رسان فقط از HTTPS امن استفاده می‌کند. در ویندوز با دستور certutil -hashfile windroida.crt SHA256 اثر انگشت فایل را با مقدار نمایش‌داده‌شده این صفحه مقایسه کن و فقط در صورت تطابق گواهی را نصب کن.",
             12f
@@ -190,6 +208,7 @@ class HostActivity : Activity() {
         val fingerprint = readCertificateFingerprint()
         fingerprintText.text = if (fingerprint.isBlank()) "اثر انگشت گواهی: در دسترس نیست" else "SHA-256: $fingerprint"
         copyFingerprintButton.isEnabled = running && fingerprint.isNotBlank()
+        shareConnectionButton.isEnabled = running && ips.isNotEmpty() && fingerprint.isNotBlank()
         val credentialsText = adminCredentials()
         credentials.text = if (credentialsText.isNotBlank()) credentialsText
         else "رمز اولیه جدیدی وجود ندارد. از رمز فعلی حساب مالک استفاده کن."
@@ -223,7 +242,7 @@ class HostActivity : Activity() {
                 CertificateFactory.getInstance("X.509").generateCertificate(it) as X509Certificate
             }
             MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
-                .joinToString(":") { "%02X".format(it) }
+                .joinToString("") { "%02X".format(it.toInt() and 0xff) }
         } catch (_: Exception) {
             ""
         }
