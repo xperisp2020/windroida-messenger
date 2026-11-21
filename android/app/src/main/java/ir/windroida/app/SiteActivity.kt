@@ -38,7 +38,19 @@ class SiteActivity : Activity() {
     private lateinit var web: WebView
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var origin = ""
+    @Volatile private var bridgeNonce = InternalWebLaunch.newNonce()
     private var cache: WebCache? = null
+
+    private fun withBridgeNonce(raw: String): String {
+        val uri = Uri.parse(raw)
+        val parts = (uri.encodedFragment ?: "").split('&').filter { it.isNotEmpty() && !it.startsWith("wdnonce=") }
+        return uri.buildUpon().encodedFragment((parts + "wdnonce=" + bridgeNonce).joinToString("&")).build().toString()
+    }
+
+    private fun hasBridgeNonce(raw: String): Boolean {
+        val fragment = Uri.parse(raw).encodedFragment ?: return false
+        return fragment.split('&').any { it == "wdnonce=" + bridgeNonce }
+    }
 
     private fun originOf(u: String): String? = TrustedOrigin.canonicalOrigin(u)
 
@@ -50,9 +62,10 @@ class SiteActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val url = intent.getStringExtra("url") ?: ""
-        if (url.isEmpty() || !sameHost(url)) { Toast.makeText(this, "این آدرس مجاز نیست", Toast.LENGTH_SHORT).show(); finish(); return }
-        origin = originOf(url) ?: ""
+        val rawUrl = intent.getStringExtra("url") ?: ""
+        if (rawUrl.isEmpty() || !sameHost(rawUrl)) { Toast.makeText(this, "این آدرس مجاز نیست", Toast.LENGTH_SHORT).show(); finish(); return }
+        origin = originOf(rawUrl) ?: ""
+        val url = withBridgeNonce(rawUrl)
         if (url.startsWith("https://") && Prefs.pin(this).isEmpty()) {
             Toast.makeText(this, "اول تو صفحهٔ اصلی برنامه گواهی سرور رو تأیید کن", Toast.LENGTH_LONG).show(); finish(); return
         }
@@ -84,7 +97,10 @@ class SiteActivity : Activity() {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url.toString()
-                if (originOf(u) == origin) return false
+                if (originOf(u) == origin) {
+                    if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
+                    return false
+                }
                 // a link back to the messenger itself (e.g. Ghab's "message" button, same host/cert, just the other port):
                 // open it inside the app instead of handing a self-signed https link to the system browser.
                 if (sameHost(u)) {
@@ -209,9 +225,13 @@ class SiteActivity : Activity() {
 
     /** the only thing the site's page may ask the app to do */
     inner class Bridge {
+        private fun valid(nonce: String?): Boolean = nonce != null &&
+            java.security.MessageDigest.isEqual(bridgeNonce.toByteArray(Charsets.UTF_8), nonce.toByteArray(Charsets.UTF_8))
+
         /** full-screen native player for a video of THIS site (same origin only; login cookie is passed along) */
         @JavascriptInterface
-        fun playVideo(url: String, title: String) {
+        fun playVideo(nonce: String, url: String, title: String) {
+            if (!valid(nonce)) return
             runOnUiThread {
                 val full = if (url.startsWith("/")) origin + url else url
                 if (originOf(full) != origin) return@runOnUiThread
@@ -221,10 +241,10 @@ class SiteActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun saveFile(url: String, name: String) { runOnUiThread { this@SiteActivity.saveFile(url, name, null) } }
+        fun saveFile(nonce: String, url: String, name: String) { if (valid(nonce)) runOnUiThread { this@SiteActivity.saveFile(url, name, null) } }
 
         /** same, but the page gets live progress through window.wdDl(id, got, total, state) and draws its own download box */
         @JavascriptInterface
-        fun saveFileId(id: String, url: String, name: String) { runOnUiThread { this@SiteActivity.saveFile(url, name, id) } }
+        fun saveFileId(nonce: String, id: String, url: String, name: String) { if (valid(nonce)) runOnUiThread { this@SiteActivity.saveFile(url, name, id) } }
     }
 }
