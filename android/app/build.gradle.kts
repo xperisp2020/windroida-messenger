@@ -79,6 +79,10 @@ chaquopy {
 }
 
 tasks.named("preBuild").configure { dependsOn(syncHostPython, syncHostWebAssets) }
+tasks.configureEach {
+    if (name.endsWith("PythonSources")) dependsOn(syncHostPython)
+    if (name.startsWith("merge") && name.endsWith("Assets")) dependsOn(syncHostWebAssets)
+}
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
