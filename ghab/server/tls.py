@@ -67,6 +67,7 @@ def _restrict_private_key(path):
             raise PermissionError(f'private key permissions are {mode:o}, expected 600: {path}')
     elif os.name == 'nt':
         account = subprocess.run(['whoami'], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(['icacls', path, '/reset'], check=True, capture_output=True, text=True)
         subprocess.run(['icacls', path, '/inheritance:r', '/grant:r', f'{account}:(F)'],
                        check=True, capture_output=True, text=True)
 
