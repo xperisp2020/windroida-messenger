@@ -97,9 +97,10 @@ class MainActivity : Activity() {
         internalOnly = internalLaunch && intent.getBooleanExtra("only", false)
         internalOnce = internalLaunch && intent.getBooleanExtra("once", false)
         // Exported launcher/share intents cannot assert privileged one-off WebView mode.
-        if (Prefs.mode(this) == "native" && !internalLaunch) {
-            // hand over a "share to Windroida" from another app together with its files
+        if (Prefs.mode(this) == "native" && (!internalLaunch || (!internalOnly && !internalOnce))) {
+            // Preserve the user's current native-mode choice for authenticated notification launches.
             val go = Intent(this, NativeActivity::class.java)
+            if (internalLaunch) go.putExtra("chat", intent.getIntExtra("chat", 0))
             if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) { go.action = intent.action; go.type = intent.type; intent.extras?.let { go.putExtras(it) }; go.clipData = intent.clipData; go.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             startActivity(go); finish(); return
         }
@@ -240,6 +241,12 @@ class MainActivity : Activity() {
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         val nonce = InternalWebLaunch.consume(this, i)
+        if (nonce != null && Prefs.mode(this) == "native" &&
+            !i.getBooleanExtra("once", false) && !i.getBooleanExtra("only", false)) {
+            startActivity(Intent(this, NativeActivity::class.java).putExtra("chat", i.getIntExtra("chat", 0)))
+            finish()
+            return
+        }
         if (nonce == null && Prefs.mode(this) == "native" && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
             val go = Intent(this, NativeActivity::class.java).setAction(i.action).setType(i.type); i.extras?.let { go.putExtras(it) }; go.clipData = i.clipData; go.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(go); return
