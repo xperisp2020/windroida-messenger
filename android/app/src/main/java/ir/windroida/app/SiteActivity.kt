@@ -106,6 +106,8 @@ class SiteActivity : Activity() {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url.toString()
+                // WebView bridge navigation is limited to HTTP(S); non-web schemes are not dispatched as Android intents.
+                if (originOf(u) == null) return true
                 if (originOf(u) == origin) {
                     if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
                     return false
