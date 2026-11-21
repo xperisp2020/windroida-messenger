@@ -30,7 +30,7 @@ class HostActivity : Activity() {
     private lateinit var stopButton: Button
     private lateinit var copyAddressButton: Button
     private lateinit var copyCertificateButton: Button
-    private lateinit var certificateFingerprint: TextView
+    private lateinit var fingerprintText: TextView
     private lateinit var copyFingerprintButton: Button
     private lateinit var copyCredentialsButton: Button
     private lateinit var deleteCredentialsButton: Button
@@ -100,12 +100,12 @@ class HostActivity : Activity() {
             else toast("ابتدا میزبانی را شروع کن")
         }
         column.addView(copyCertificateButton)
-        certificateFingerprint = text("اثر انگشت گواهی: پس از شروع نمایش داده می‌شود.", 12f)
-        certificateFingerprint.textDirection = TextView.TEXT_DIRECTION_LTR
-        certificateFingerprint.setTextIsSelectable(true)
-        column.addView(certificateFingerprint)
+        fingerprintText = text("اثر انگشت گواهی: پس از شروع نمایش داده می‌شود.", 12f)
+        fingerprintText.textDirection = TextView.TEXT_DIRECTION_LTR
+        fingerprintText.setTextIsSelectable(true)
+        column.addView(fingerprintText)
         copyFingerprintButton = button("کپی اثر انگشت گواهی") {
-            val value = certificateFingerprint()
+            val value = readCertificateFingerprint()
             if (value.isNotBlank()) copy(value, "اثر انگشت گواهی کپی شد")
             else toast("گواهی هنوز آماده نیست")
         }
@@ -187,8 +187,8 @@ class HostActivity : Activity() {
             if (ips.isEmpty()) "آدرس شبکه پیدا نشد؛ اتصال محلی: https://127.0.0.1:$port"
             else ips.joinToString("\n") { "https://$it:$port" }
         } else "پس از شروع میزبانی، آدرس‌های اتصال اینجا نمایش داده می‌شوند."
-        val fingerprint = certificateFingerprint()
-        certificateFingerprint.text = if (fingerprint.isBlank()) "اثر انگشت گواهی: در دسترس نیست" else "SHA-256: $fingerprint"
+        val fingerprint = readCertificateFingerprint()
+        fingerprintText.text = if (fingerprint.isBlank()) "اثر انگشت گواهی: در دسترس نیست" else "SHA-256: $fingerprint"
         copyFingerprintButton.isEnabled = running && fingerprint.isNotBlank()
         val credentialsText = adminCredentials()
         credentials.text = if (credentialsText.isNotBlank()) credentialsText
@@ -215,7 +215,7 @@ class HostActivity : Activity() {
         return if (url.isBlank()) "" else url.replaceFirst("https://", "http://") + "/windroida.crt"
     }
 
-    private fun certificateFingerprint(): String {
+    private fun readCertificateFingerprint(): String {
         val file = File(filesDir, "windroida/data/server.crt")
         return try {
             if (!file.isFile) return ""
