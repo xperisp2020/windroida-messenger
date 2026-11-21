@@ -109,11 +109,14 @@ def _write_private_bytes(path, data):
         os.replace(tmp_name, path)
         _restrict_private_file(path)
         if os.name == "posix":
-            dir_fd = os.open(str(path.parent), os.O_RDONLY)
             try:
-                os.fsync(dir_fd)
-            finally:
-                os.close(dir_fd)
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
     except Exception:
         try:
             os.close(fd)
