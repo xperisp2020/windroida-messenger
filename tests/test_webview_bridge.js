@@ -40,10 +40,12 @@ assert.match(read('ghab/web/index.html'), /frame-src 'none'/, 'Ghab WebView must
 const mainCode = bootstrap(web, 'The Android Java bridge is callable from every WebView frame');
 const first = run(mainCode, `#room=42&wdnonce=${nonce}`);
 assert.equal(first.replaced, '/?test=1#room=42');
+first.bridge.setServicePort('drive', 9123);
+assert.deepEqual(JSON.parse(JSON.stringify(first.calls[0])), ['setServicePort', nonce, 'drive', 9123]);
 first.bridge.setToken('session-token');
-assert.deepEqual(JSON.parse(JSON.stringify(first.calls[0])), ['setToken', nonce, 'session-token']);
+assert.deepEqual(JSON.parse(JSON.stringify(first.calls[1])), ['setToken', nonce, 'session-token']);
 assert.equal(first.bridge.only(), true);
-assert.deepEqual(JSON.parse(JSON.stringify(first.calls[1])), ['only', nonce]);
+assert.deepEqual(JSON.parse(JSON.stringify(first.calls[2])), ['only', nonce]);
 const reload = run(mainCode, '#room=42', nonce);
 reload.bridge.setToken('after-reload');
 assert.deepEqual(JSON.parse(JSON.stringify(reload.calls[0])), ['setToken', nonce, 'after-reload']);
