@@ -53,4 +53,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Telegram's animated emoji (Lottie files in assets/emoji)
     implementation("com.airbnb.android:lottie:6.4.0")
+    testImplementation("junit:junit:4.13.2")
 }
