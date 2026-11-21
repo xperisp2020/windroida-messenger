@@ -92,6 +92,14 @@ class AndroidHostRuntimeTests(unittest.TestCase):
             self.assertIn(("sharedpref", "wd_host_return.xml"), excluded)
             self.assertIn(("file", "windroida/"), excluded)
 
+        legacy = ET.parse(
+            REPO_ROOT / "android" / "app" / "src" / "main" / "res" / "xml" / "backup_rules.xml"
+        ).getroot()
+        legacy_excluded = {(item.get("domain"), item.get("path")) for item in legacy.findall("exclude")}
+        self.assertIn(("sharedpref", "wd_host.xml"), legacy_excluded)
+        self.assertIn(("sharedpref", "wd_host_return.xml"), legacy_excluded)
+        self.assertIn(("file", "windroida/"), legacy_excluded)
+
     def test_private_paths_and_embedded_server_start_stop(self):
         with tempfile.TemporaryDirectory(prefix="windroida-android-host-") as temp:
             env = os.environ.copy()
