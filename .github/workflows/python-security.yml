@@ -42,6 +42,8 @@ jobs:
         run: python -m unittest discover -s tests -t . -v
       - name: Run cross-platform host capacity tests
         run: python -m unittest -v test_host_capacity.py test_host_capacity_integration.py
+      - name: Run embedded Android host runtime lifecycle tests
+        run: python -m unittest -v test_android_host_runtime.py
       - name: Run messenger security tests
         run: python test_security.py
       - name: Run gateway security tests
@@ -62,6 +64,8 @@ jobs:
         run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
       - name: Verify host capacity policy and server integration on Windows
         run: python -m unittest -v test_host_capacity.py test_host_capacity_integration.py
+      - name: Run embedded Android host runtime lifecycle tests on Windows
+        run: python -m unittest -v test_android_host_runtime.py
       - name: Run messenger security integration tests on Windows
         env:
           PYTHONIOENCODING: utf-8
