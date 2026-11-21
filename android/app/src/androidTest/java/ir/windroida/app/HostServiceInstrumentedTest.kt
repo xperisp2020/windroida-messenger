@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
@@ -41,6 +42,20 @@ class HostServiceInstrumentedTest {
             webPort = prefs.getInt("web_port", 8081)
             tcpPort = prefs.getInt("tcp_port", 8765)
             assertTrue("Messenger TCP listener did not open", canConnect(tcpPort))
+
+            val certificateDownload = URL("http://127.0.0.1:$webPort/windroida.crt").openConnection() as HttpURLConnection
+            certificateDownload.connectTimeout = 8_000
+            certificateDownload.readTimeout = 8_000
+            try {
+                assertEquals("TLS certificate bootstrap endpoint must be reachable without trusting itself", 200, certificateDownload.responseCode)
+                val certificate = java.security.cert.CertificateFactory.getInstance("X.509")
+                    .generateCertificate(certificateDownload.inputStream) as X509Certificate
+                certificate.checkValidity()
+                assertTrue("Host certificate must include loopback for on-device connection",
+                    certificate.subjectAlternativeNames.orEmpty().any { it.size > 1 && it[1] == "127.0.0.1" })
+            } finally {
+                certificateDownload.disconnect()
+            }
 
             val connection = URL("https://127.0.0.1:$webPort/").openConnection() as HttpsURLConnection
             connection.sslSocketFactory = trustAllContext().socketFactory
