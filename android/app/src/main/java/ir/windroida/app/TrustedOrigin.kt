@@ -11,12 +11,13 @@ object TrustedOrigin {
         return try {
             if (raw.isNullOrBlank() || raw.any { it.isWhitespace() || it.code < 0x20 }) return null
             val uri = URI(raw)
-            if (!uri.isAbsolute || uri.isOpaque || uri.rawUserInfo != null) return null
+            if (!uri.isAbsolute || uri.isOpaque || uri.rawUserInfo != null || uri.rawAuthority.isNullOrEmpty()) return null
+            if (uri.rawAuthority.endsWith(":")) return null
             val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
             if (scheme != "http" && scheme != "https") return null
             val rawHost = uri.host ?: return null
             if (rawHost.isBlank()) return null
-            val host = rawHost.trimEnd('.').lowercase(Locale.ROOT)
+            val host = rawHost.lowercase(Locale.ROOT)
             val port = when {
                 uri.port == -1 && scheme == "https" -> 443
                 uri.port == -1 && scheme == "http" -> 80
