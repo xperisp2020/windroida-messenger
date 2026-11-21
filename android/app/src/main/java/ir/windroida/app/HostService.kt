@@ -206,13 +206,21 @@ class HostService : Service() {
         return try {
             Collections.list(NetworkInterface.getNetworkInterfaces())
                 .filter { it.isUp && !it.isLoopback }
-                .flatMap { Collections.list(it.inetAddresses) }
-                .filterIsInstance<Inet4Address>()
-                .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.isSiteLocalAddress }
-                .map { it.hostAddress ?: "" }
-                .filter { it.isNotBlank() }
-                .distinct()
-                .sorted()
+                .flatMap { network ->
+                    val priority = when {
+                        network.name.startsWith("wlan", true) || network.name.contains("wifi", true) -> 0
+                        network.name.startsWith("eth", true) -> 1
+                        else -> 2
+                    }
+                    Collections.list(network.inetAddresses)
+                        .filterIsInstance<Inet4Address>()
+                        .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.isSiteLocalAddress }
+                        .map { priority to (it.hostAddress ?: "") }
+                }
+                .filter { it.second.isNotBlank() }
+                .distinctBy { it.second }
+                .sortedBy { it.first }
+                .map { it.second }
         } catch (_: Exception) {
             emptyList()
         }
