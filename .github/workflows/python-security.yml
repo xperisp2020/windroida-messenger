@@ -1,7 +1,7 @@
 name: Python security tests
 on:
   push:
-    branches: [main, "fix/**"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
