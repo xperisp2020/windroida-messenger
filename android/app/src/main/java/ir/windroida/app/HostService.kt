@@ -113,7 +113,7 @@ class HostService : Service() {
         if (wifiLock?.isHeld == true) return
         try {
             wifiLock = getSystemService(WifiManager::class.java)
-                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Windroida:Host").also {
+                .createWifiLock(WifiManager.WIFI_MODE_FULL, "Windroida:Host").also {
                     it.setReferenceCounted(false)
                     it.acquire()
                 }
