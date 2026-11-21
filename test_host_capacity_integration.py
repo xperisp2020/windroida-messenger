@@ -165,12 +165,14 @@ class HostCapacityIntegrationTests(unittest.TestCase):
         self.assertTrue(status["is_owner"])
 
     def test_stop_closes_unauthenticated_sockets_and_rejects_new_clients(self):
+        with self.server.conns_lock:
+            before = self.server.conns_total
         raw = socket.create_connection(("127.0.0.1", self.port), timeout=3)
         raw.settimeout(3)
         deadline = time.time() + 3
         while time.time() < deadline:
             with self.server.conns_lock:
-                accepted = self.server.conns_total > 0
+                accepted = self.server.conns_total > before
             if accepted:
                 break
             time.sleep(0.02)
