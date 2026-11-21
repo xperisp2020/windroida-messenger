@@ -122,7 +122,7 @@ class SiteActivity : Activity() {
                 // open it inside the app instead of handing a self-signed https link to the system browser.
                 if (sameHost(u)) {
                     val hash = u.substringAfter('#', "").ifEmpty { null }
-                    val nonce = InternalWebLaunch.issue()
+                    val nonce = InternalWebLaunch.issue(this@SiteActivity)
                     startActivity(Intent(this@SiteActivity, MainActivity::class.java).putExtra("once", true)
                         .putExtra(InternalWebLaunch.EXTRA_NONCE, nonce).also { if (hash != null) it.putExtra("hash", hash) })
                     finish(); return true
