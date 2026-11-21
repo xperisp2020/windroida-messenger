@@ -47,6 +47,8 @@ class PlayerActivity : Activity() {
         val pin = Prefs.pin(this)
         val client = OkHttpClient.Builder()
             .sslSocketFactory(Trust.pinnedContext(pin).socketFactory, Trust.pinnedTm(pin))
+            .followRedirects(false)
+            .followSslRedirects(false)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
