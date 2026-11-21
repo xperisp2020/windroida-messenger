@@ -1,6 +1,7 @@
 package ir.windroida.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -26,6 +27,7 @@ class HostActivity : Activity() {
     private lateinit var stopButton: Button
     private lateinit var copyAddressButton: Button
     private lateinit var copyCredentialsButton: Button
+    private lateinit var deleteCredentialsButton: Button
     private lateinit var useNativeButton: Button
     private lateinit var useWebButton: Button
     private lateinit var restoreButton: Button
@@ -67,7 +69,7 @@ class HostActivity : Activity() {
         }
         column.addView(text("میزبانی روی همین گوشی", 23f, true))
         column.addView(text(
-            "با فعال‌کردن میزبانی، گوشی به سرور Windroida تبدیل می‌شود. کاربران دیگر می‌توانند از طریق شبکه محلی به آدرس نمایش‌داده‌شده وصل شوند.",
+            "با فعال‌کردن میزبانی، گوشی سرور پیام‌رسان و چت می‌شود و کاربران دیگر از طریق شبکه محلی وصل می‌شوند. سرویس‌های Ghab و Cloud Drive در میزبان اندرویدی هنوز فعال نیستند.",
             14f
         ))
         status = text("در حال بررسی وضعیت…", 15f, true)
@@ -97,6 +99,19 @@ class HostActivity : Activity() {
             else toast("اطلاعات رمز اولیه موجود نیست؛ از رمز فعلی حساب مالک استفاده کن")
         }
         column.addView(copyCredentialsButton)
+        deleteCredentialsButton = button("حذف امن فایل رمز اولیه") {
+            AlertDialog.Builder(this)
+                .setTitle("حذف رمز اولیه")
+                .setMessage("فایل رمز اولیه از فضای خصوصی برنامه حذف شود؟ قبل از حذف، مطمئن شو رمز مالک را یادداشت کرده‌ای.")
+                .setNegativeButton("انصراف", null)
+                .setPositiveButton("حذف") { _, _ ->
+                    val file = File(filesDir, "windroida/data/admin_password.txt")
+                    if (file.delete()) toast("فایل رمز اولیه حذف شد") else toast("فایلی برای حذف وجود ندارد")
+                    render()
+                }
+                .show()
+        }
+        column.addView(deleteCredentialsButton)
         column.addView(text(
             "رمز اولیه فقط در فضای خصوصی برنامه نگهداری می‌شود. پس از یادداشت‌کردن و تغییر رمز، فایل رمز اولیه را حذف کن.",
             12f
@@ -153,6 +168,7 @@ class HostActivity : Activity() {
         stopButton.isEnabled = enabled
         copyAddressButton.isEnabled = running && ips.isNotEmpty()
         copyCredentialsButton.isEnabled = credentialsText.isNotBlank()
+        deleteCredentialsButton.isEnabled = credentialsText.isNotBlank()
         useNativeButton.isEnabled = running
         useWebButton.isEnabled = running
         restoreButton.isEnabled = returnPrefs.getBoolean("saved", false)
