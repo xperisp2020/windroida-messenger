@@ -23,8 +23,7 @@ def _configure_paths(files_dir):
 
     import common
 
-    # common.py is imported from the read-only APK. All mutable server data and
-    # web assets must live in the app's private, writable files directory.
+    # All mutable server data and web assets live in app-private writable storage.
     common.BASE_DIR = root
     common.DATA_DIR = data
     common.DB_PATH = data / "windroida.db"
@@ -43,11 +42,11 @@ def start_host(files_dir, lan_addresses=""):
     with _lock:
         if _server is not None:
             return json.dumps({
-            "running": True,
-            "tcp_port": _server.port,
-            "web_port": _server.web_port,
-            "tls": bool(_server.ssl_ctx),
-        })
+                "running": True,
+                "tcp_port": _server.port,
+                "web_port": _server.web_port,
+                "tls": bool(_server.ssl_ctx),
+            })
 
         root = _configure_paths(files_dir)
         if not (root / "web" / "index.html").is_file():
@@ -60,15 +59,15 @@ def start_host(files_dir, lan_addresses=""):
         from server import WindroidaServer
 
         instance = WindroidaServer(
-        host="0.0.0.0",
-        port=8765,
-        tls=True,
-        db_path=root / "data" / "windroida.db",
-        web_port=8081,
-    )
+            host="0.0.0.0",
+            port=8765,
+            tls=True,
+            db_path=root / "data" / "windroida.db",
+            web_port=8081,
+        )
         try:
-            # Suppress the desktop launcher's console output: it includes the initial
-        # admin password. The password remains in the app-private 0600 file.
+            # seed_admin prints the generated password on desktop. Capture it here;
+            # the only persisted copy remains the private admin_password.txt file.
             with contextlib.redirect_stdout(io.StringIO()):
                 instance.seed_admin()
             instance.start()
