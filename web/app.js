@@ -197,7 +197,8 @@ function applySize(n){document.body.style.fontSize=n+'px';lsSet('wd-size',n)}
     vibrate:ms=>raw.vibrate(nonce,ms), keepAwake:on=>raw.keepAwake(nonce,on),
     playVideo:(u,t)=>raw.playVideo(nonce,u,t), saveFile:(u,n)=>raw.saveFile(nonce,u,n),
     cacheInfo:()=>raw.cacheInfo(nonce), cacheClear:()=>raw.cacheClear(nonce), cacheLimit:mb=>raw.cacheLimit(nonce,mb),
-    changeServer:()=>raw.changeServer(nonce), openExternal:u=>raw.openExternal(nonce,u), setToken:t=>raw.setToken(nonce,t)
+    changeServer:()=>raw.changeServer(nonce), openExternal:u=>raw.openExternal(nonce,u),
+    setServicePort:(service,port)=>raw.setServicePort(nonce,service,port), setToken:t=>raw.setToken(nonce,t)
   };
 })();
 
@@ -1214,6 +1215,7 @@ async function openSso(op,label){
   let win=null;if(!bridge)win=window.open('','_blank');   // open the tab now, synchronously, so popup-blockers allow it
   try{
     const r=await call(op);
+    if(bridge&&WD.setServicePort)WD.setServicePort(op==='drive_token'?'drive':'ghab',Number(r.port));
     const url=location.protocol+'//'+location.hostname+':'+r.port+'/sso?t='+encodeURIComponent(r.token);   // Cloud Drive shares Windroida's own certificate, so it's https exactly when Windroida itself is
     if(bridge)WD.openExternal(url);else if(win)win.location=url;else location.href=url;
   }catch(e){if(win)win.close();toast(e.message||(label+' در دسترس نیست'))}}
