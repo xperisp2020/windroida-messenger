@@ -17,7 +17,12 @@ object Prefs {
     /** "native" (the native screens, default) or "web" (the WebView app, always available as the fallback): the native side switches itself to "web" after a crash */
     fun mode(c: Context): String = sp(c).getString("mode", "native") ?: "native"
     fun setMode(c: Context, v: String) = sp(c).edit().putString("mode", v).apply()
-    fun setServer(c: Context, v: String) = sp(c).edit().putString("server", v.trim().trimEnd('/')).apply()
+    fun setServer(c: Context, v: String) {
+        val next = v.trim().trimEnd('/')
+        val edit = sp(c).edit().putString("server", next)
+        if (server(c) != next) edit.remove("drive_port").remove("ghab_port")
+        edit.apply()
+    }
     fun setPin(c: Context, v: String) = sp(c).edit().putString("pin", v).apply()
     fun setToken(c: Context, v: String) = sp(c).edit().putString("token", v).apply()
     /** cap, in MB, on the downloaded-files folder (chat media/voice/files kept like Telegram); 0 = unlimited */
