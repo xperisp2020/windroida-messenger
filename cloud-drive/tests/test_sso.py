@@ -43,6 +43,11 @@ class TestSso(SsoBase):
             with self.assertRaises(RuntimeError):
                 create_app(DATA_DIR=tmp, TESTING=True, HOUSEKEEPING=False, SECRET_KEY="weak-secret")
 
+    def test_weak_configured_sso_secret_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                create_app(DATA_DIR=tmp, TESTING=True, HOUSEKEEPING=False, SSO_SECRET="weak-sso-secret")
+
     @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced the same way on Windows")
     def test_session_secret_is_owner_only_and_existing_permissions_are_repaired(self):
         from app import _resolve_secret
