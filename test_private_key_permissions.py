@@ -1,6 +1,7 @@
 """Regression tests for private-key and signing-secret file permissions."""
 import os
 import stat
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -110,6 +111,22 @@ class PrivateFilePermissionTests(unittest.TestCase):
             path = Path(tmp) / "server-key.pem"
             tls._write_key(str(path), ec.generate_private_key(ec.SECP256R1()))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_openssl_fallback_key_is_private_before_post_creation_restriction(self):
+        if not shutil.which("openssl"):
+            self.skipTest("openssl is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            crt, key = Path(tmp) / "server.crt", Path(tmp) / "server.key"
+            real_run = subprocess.run
+
+            def inspect_created_key(*args, **kwargs):
+                result = real_run(*args, **kwargs)
+                self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
+                return result
+
+            with mock.patch("server.subprocess.run", side_effect=inspect_created_key):
+                self.assertTrue(server.WindroidaServer._cert_openssl(crt, key, ["localhost"]))
+            self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
 
     def test_ghab_custom_tls_rejects_symlinked_private_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
