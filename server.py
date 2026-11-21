@@ -513,11 +513,16 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             except ValueError:
                 san.append(f"DNS:{n}")
         try:
-            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key),
-                            "-out", str(crt), "-days", "3650", "-subj", "/CN=Windroida",
-                            "-addext", "subjectAltName=" + ",".join(san),
-                            "-addext", "basicConstraints=critical,CA:TRUE",
-                            "-addext", "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign"], check=True, capture_output=True)
+            old_umask = os.umask(0o077) if os.name == "posix" else None
+            try:
+                subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key),
+                                "-out", str(crt), "-days", "3650", "-subj", "/CN=Windroida",
+                                "-addext", "subjectAltName=" + ",".join(san),
+                                "-addext", "basicConstraints=critical,CA:TRUE",
+                                "-addext", "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign"], check=True, capture_output=True)
+            finally:
+                if old_umask is not None:
+                    os.umask(old_umask)
             _restrict_private_file(key)
             return True
         except (OSError, subprocess.CalledProcessError):
