@@ -284,6 +284,7 @@ class HostService : Service() {
 
     override fun onDestroy() {
         stopRequested = true
+        prefs.edit().putBoolean("running", false).apply()
         synchronized(pythonLock) {
             try {
                 if (Python.isStarted()) Python.getInstance().getModule("android_host").callAttr("stop_host")
