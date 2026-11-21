@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Never back up bearer tokens, pinned-server identity, or WebView cookies/local storage. -->
+    <exclude domain="sharedpref" path="wd.xml" />
+    <exclude domain="root" path="app_webview/" />
+</full-backup-content>
