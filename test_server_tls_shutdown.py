@@ -1,4 +1,6 @@
 """Cross-platform integration test for stopping a TLS-enabled messenger server."""
+import contextlib
+import io
 import socket
 import ssl
 import tempfile
@@ -17,7 +19,9 @@ class ServerTlsShutdownTests(unittest.TestCase):
                 db_path=Path(temp) / "windroida.db",
                 web_port=0,
             )
-            instance.seed_admin()
+            # Never expose a generated test-owner password in CI logs.
+            with contextlib.redirect_stdout(io.StringIO()):
+                instance.seed_admin()
             port = instance.start()
             web_port = instance.web.port
             client = None
