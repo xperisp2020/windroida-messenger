@@ -8,8 +8,8 @@
 import hmac
 import re
 import secrets
-import threading
 import time
+from sqlite3 import IntegrityError
 
 from flask import Blueprint, redirect, request, session
 from werkzeug.security import generate_password_hash
@@ -23,18 +23,14 @@ bp = Blueprint('sso', __name__)
 RESERVED = {'admin', 'api', 'static', 'media', 'con', 'prn', 'aux', 'nul',
             *(f'com{i}' for i in range(1, 10)), *(f'lpt{i}' for i in range(1, 10))}
 WD_NAME = re.compile(r'^(?=.*[A-Za-z0-9])[A-Za-z0-9_]{3,32}$')
-_used, _lock = {}, threading.Lock()
-
-
 def _fresh(sig, keep_until):
-    t = time.time()
-    with _lock:
-        for k in [k for k, v in _used.items() if v < t]:
-            del _used[k]
-        if sig in _used:
-            return False
-        _used[sig] = keep_until
+    """Persist one-time SSO signatures so a server restart cannot reopen the replay window."""
+    run('delete from sso_used where expires < ?', time.time())
+    try:
+        run('insert into sso_used(signature, expires) values(?,?)', sig, keep_until)
         return True
+    except IntegrityError:
+        return False
 
 
 def _pick_username(wd):
