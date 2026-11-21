@@ -1,5 +1,10 @@
 import sys, tempfile, base64, json, ssl, urllib.request, urllib.error, time, hmac, hashlib
 from pathlib import Path
+
+# The suite prints Persian diagnostics on Windows runners whose default console encoding may be cp1252.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 sys.path.insert(0,".")
 import common
 tmp=Path(tempfile.mkdtemp()); common.DATA_DIR=tmp; common.UPLOADS_DIR=tmp/"u"; common.AVATARS_DIR=tmp/"a"; common.WALLPAPERS_DIR=tmp/"w"; common.ROOMAUDIO_DIR=tmp/"r"; common.FILES_DIR=tmp/"f"; (tmp/"f").mkdir()

@@ -34,6 +34,8 @@ Windroida is a complete messaging platform that runs on **your own PC or server*
 
 Plus a **native Android app** (Kotlin, glassmorphism design) and an **admin datasheet** for the owner.
 
+**Cross-platform self-hosting:** a Windows PC can host one Windroida server and users can connect to that same address from Windows or Android. The shared Settings screen exposes owner-only member and concurrent-online limits; enforcement happens on the server. An experimental Android phone-host mode is now implemented for **LAN-only messenger hosting** (same TCP/HTTPS backend, app-private data, foreground service). It is not yet production-ready: real-device soak testing, secure invite links/QR, public-internet reachability, NAT traversal, and Ghab/Cloud Drive hosting remain incomplete.
+
 ## 🚀 Features
 
 **Messenger**
@@ -243,6 +245,7 @@ python test_core.py && python test_security.py
 - قاب: پست، ریلز، استوری، جستجوی آدم‌ها و هشتگ، اشتراک ریلز تو چت
 - فضای ابری: پوشه، پیش‌نمایش، سهمیه برای هر کاربر، آپلود ادامه‌دار
 - اپ اندروید بومی با ظاهر شیشه‌ای، اعلان، پخش آهنگ و کش آفلاین
+- **میزبانی اندرویدی (پیش‌نمایش):** نسخه آزمایشی می‌تواند سرور اصلی پیام‌رسان را روی خود گوشی و در شبکه محلی اجرا کند. این قابلیت از Python 3.11 تعبیه‌شده و سرویس foreground استفاده می‌کند؛ HTTPS اجباری است. Ghab و Cloud Drive روی میزبان اندرویدی، دعوت‌نامه/QR، دسترسی اینترنت عمومی، NAT و relay هنوز آماده نیستند و آزمون دستگاه واقعی لازم است.
 - رمزها با scrypt هش می‌شن؛ اسکریپت‌های تست نفوذ هم داخل پروژه‌ست
 
 ### نکته مهم

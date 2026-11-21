@@ -19,6 +19,7 @@ import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
 import ir.windroida.app.NativeActivity
+import ir.windroida.app.HostActivity
 import ir.windroida.app.SiteActivity
 import ir.windroida.app.net.Api
 import ir.windroida.app.net.Model
@@ -492,6 +493,7 @@ class ListScreen(private val a: NativeActivity) : Screen(), Model.Listener {
         item("cloud", "فضای ابری") { openSso("drive_token") }
         item("image", "قاب") { a.openGhabWeb() }
         item("image", "قاب (نسخه وب)") { openSso("ghab_token") }
+        item("server", "میزبانی روی این گوشی") { a.startActivity(Intent(a, HostActivity::class.java)) }
         item("settings", "تنظیمات و حریم خصوصی") { a.push(SettingsScreen(a)) }
         item("logout", "خروج") { confirm("از حساب خارج بشی؟") { a.logout() } }
         panel.addView(sv, lp(MATCH, 0).weight(1f))

@@ -26,6 +26,7 @@ from pathlib import Path
 from collections import defaultdict, deque
 
 import common
+import host_capacity
 from rooms import make_rooms
 from mafia_room import make_mafia
 from mensch_room import make_mensch
@@ -256,6 +257,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.db_path = db_path or common.DB_PATH
         self.sessions = defaultdict(list)       # uid -> [Conn]
         self.sessions_lock = threading.Lock()
+        self.capacity_lock = threading.RLock()
         self.ip_hits = defaultdict(deque)       # ip -> timestamps of auth attempts
         self.send_hits = defaultdict(deque)     # uid -> timestamps of sent messages
         self._upload_inflight = 0               # bytes currently being streamed to disk by /upload (all users combined)
@@ -263,10 +265,12 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.conns_lock = threading.Lock()
         self.conns_total = 0
         self.conns_by_ip = defaultdict(int)     # raw TCP connections currently open, before any login (flood guard)
+        self.open_sockets = set()               # includes unauthenticated sockets so stop() can close every client
         self.notify_q = defaultdict(lambda: deque(maxlen=50))   # uid -> recent {seq, chat_id, title, text} for the Android app's long-poll
         self.notify_seq = defaultdict(int)
         self.notify_cv = threading.Condition()
         self.listener = None
+        self.accept_thread = None
         self.ssl_ctx = None
         self._stop = threading.Event()
         self._rooms_init()
@@ -296,6 +300,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 log("WARNING: database integrity check failed:", qc, "- stop the server and restore data/windroida.db from a copy")
         except sqlite3.Error as e:
             log("WARNING: database check error:", repr(e))
+        host_capacity.ensure_schema(boot)
+        boot.commit()
         self._ensure_channel(boot)
         n = migrate_legacy_uploads(boot)
         if n:
@@ -314,7 +320,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.listener.bind((self.host, self.port))
         self.listener.listen(64)
         self.port = self.listener.getsockname()[1]
-        threading.Thread(target=self._accept_loop, daemon=True).start()
+        self.accept_thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self.accept_thread.start()
         threading.Thread(target=self._song_sweeper, daemon=True).start()
         log(f"server listening on {self.host}:{self.port} (tls={'on' if self.tls else 'off'})")
         if self.web_port is not None:
@@ -338,13 +345,26 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         if self.web:
             self.web.stop()
         try:
+            self.listener.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
             self.listener.close()
         except Exception:
             pass
-        with self.sessions_lock:
-            conns = [c for lst in self.sessions.values() for c in lst]
-        for c in conns:
-            c.close()
+        if self.accept_thread and self.accept_thread is not threading.current_thread():
+            self.accept_thread.join(timeout=2)
+        with self.conns_lock:
+            sockets = list(self.open_sockets)
+        for sock in sockets:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     def _cert_names(self):
         names = {"localhost", "127.0.0.1", lan_ip(), socket.gethostname()}
@@ -559,12 +579,19 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 sock, addr = self.listener.accept()
             except OSError:
                 break
+            if self._stop.is_set():
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                break
             ip = addr[0] if addr else ""
             with self.conns_lock:
-                over = self.conns_total >= self.MAX_CONNS_TOTAL or self.conns_by_ip[ip] >= self.MAX_CONNS_PER_IP
+                over = self._stop.is_set() or self.conns_total >= self.MAX_CONNS_TOTAL or self.conns_by_ip[ip] >= self.MAX_CONNS_PER_IP
                 if not over:
                     self.conns_total += 1
                     self.conns_by_ip[ip] += 1
+                    self.open_sockets.add(sock)
             if over:         # too many open connections already (this IP, or overall): refuse before spending a thread/DB handle
                 try:
                     sock.close()
@@ -572,6 +599,10 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                     pass
                 continue
             threading.Thread(target=self._client_thread, args=(sock, addr), daemon=True).start()
+
+    def _forget_socket(self, sock):
+        with self.conns_lock:
+            self.open_sockets.discard(sock)
 
     def _conn_done(self, ip):
         with self.conns_lock:
@@ -583,22 +614,36 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
     # ------------------------------------------------------ per-connection
     def _client_thread(self, sock, addr):
         ip = addr[0] if addr else ""
+        raw_sock = sock
         try:
             sock.settimeout(120)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             if self.ssl_ctx:
                 sock = self.ssl_ctx.wrap_socket(sock, server_side=True)
+                with self.conns_lock:
+                    self.open_sockets.discard(raw_sock)
+                    stopping = self._stop.is_set()
+                    if not stopping:
+                        self.open_sockets.add(sock)
+                if stopping:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                    self._conn_done(ip)
+                    return
         except Exception:
+            self._forget_socket(raw_sock)
             try:
-                sock.close()
+                raw_sock.close()
             except Exception:
                 pass
             self._conn_done(ip)
             return
         conn = Conn(self, sock, addr)
-        conn.db = connect_db(self.db_path)
         try:
+            conn.db = connect_db(self.db_path)
             while conn.alive:
                 req = recv_frame(sock)
                 self._dispatch(conn, req)
@@ -657,6 +702,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         except Exception:
             pass
         conn.close()
+        self._forget_socket(conn.sock)
 
     def _dispatch(self, conn, req):
         if not isinstance(req, dict):
@@ -898,10 +944,16 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         return token, cur.lastrowid
 
     def _login_ok(self, conn, row, device=None):
-        conn.uid = row["id"]
-        with self.sessions_lock:
-            first = not self.sessions[row["id"]]
-            self.sessions[row["id"]].append(conn)
+        with self.capacity_lock:
+            limits = host_capacity.get_limits(conn.db)
+            with self.sessions_lock:
+                try:
+                    host_capacity.check_online_capacity(self.sessions, row["id"], limits["max_online"])
+                except host_capacity.CapacityReached as e:
+                    raise Fail(str(e))
+                first = not any(c.alive for c in self.sessions.get(row["id"], []))
+                conn.uid = row["id"]
+                self.sessions[row["id"]].append(conn)
         with conn.db:
             conn.db.execute("UPDATE users SET last_seen=? WHERE id=?", (now(), row["id"]))
         if first:
@@ -981,20 +1033,38 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             raise Fail("این نام کاربری قبلاً گرفته شده")
         ps, ph = hash_secret(password)
         ss, sh = hash_secret(answer)
-        try:
-            with conn.db:
+        with self.capacity_lock:
+            limits = host_capacity.get_limits(conn.db)
+            with self.sessions_lock:
+                try:
+                    host_capacity.check_online_capacity(self.sessions, None, limits["max_online"])
+                except host_capacity.CapacityReached as e:
+                    raise Fail(str(e))
+            try:
+                conn.db.execute("BEGIN IMMEDIATE")
+                try:
+                    host_capacity.check_registration_capacity(conn.db, ADMIN_USER)
+                except host_capacity.CapacityReached as e:
+                    conn.db.rollback()
+                    raise Fail(str(e))
                 cur = conn.db.execute(
                     "INSERT INTO users(username, display_name, pw_salt, pw_hash, sec_question, sec_salt, sec_hash,"
                     " created_at) VALUES (?,?,?,?,?,?,?,?)", (username, display, ps, ph, question, ss, sh, now()))
-        except sqlite3.IntegrityError:
-            raise Fail("این نام کاربری قبلاً گرفته شده")
-        row = conn.db.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
-        try:
-            self._ensure_channel(conn.db)
-        except sqlite3.Error:
-            pass
-        log("registered", username)
-        return self._login_ok(conn, row, device=req.get("device", ""))
+                conn.db.commit()
+            except sqlite3.IntegrityError:
+                conn.db.rollback()
+                raise Fail("این نام کاربری قبلاً گرفته شده")
+            except Exception:
+                if conn.db.in_transaction:
+                    conn.db.rollback()
+                raise
+            row = conn.db.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
+            try:
+                self._ensure_channel(conn.db)
+            except sqlite3.Error:
+                pass
+            log("registered", username)
+            return self._login_ok(conn, row, device=req.get("device", ""))
 
     def _check_lock(self, row):
         if row["locked_until"] > now():
@@ -1231,6 +1301,42 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
     def op_me(self, conn, req):
         row = conn.db.execute("SELECT * FROM users WHERE id=?", (conn.uid,)).fetchone()
         return {"me": self._me_view(row)}
+
+    def op_host_limits(self, conn, req):
+        """Read host capacity or update it from the owner account."""
+        row = conn.db.execute("SELECT username FROM users WHERE id=?", (conn.uid,)).fetchone()
+        if not row:
+            raise Fail("حساب معتبر نیست")
+        is_owner = row["username"].lower() == ADMIN_USER
+        action = str(req.get("action") or "get").lower()
+        if action == "set":
+            if not is_owner:
+                raise Fail("فقط مالک سرور می‌تواند ظرفیت را تغییر دهد")
+            try:
+                with self.capacity_lock:
+                    limits = host_capacity.set_limits(
+                        conn.db, req.get("max_members"), req.get("max_online"), now()
+                    )
+            except host_capacity.InvalidCapacity:
+                raise Fail("ظرفیت نامعتبر است؛ سقف اعضا ۰ تا ۱۰۰۰۰۰ و سقف آنلاین ۰ تا ۵۰۰۰ است")
+        elif action == "get":
+            if not is_owner:
+                raise Fail("فقط مالک سرور می‌تواند اطلاعات ظرفیت را مشاهده کند")
+            limits = host_capacity.get_limits(conn.db)
+        else:
+            raise Fail("عملیات ظرفیت نامعتبر است")
+        members = conn.db.execute(
+            "SELECT COUNT(*) FROM users WHERE username COLLATE NOCASE <> ?", (ADMIN_USER,)
+        ).fetchone()[0]
+        with self.sessions_lock:
+            online = host_capacity.online_user_count(self.sessions)
+        return {
+            "capacity": limits,
+            "members": int(members),
+            "online": int(online),
+            "unlimited_value": 0,
+            "is_owner": is_owner,
+        }
 
     @staticmethod
     def _check_display_name(display, username):

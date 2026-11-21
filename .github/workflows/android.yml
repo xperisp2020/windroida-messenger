@@ -21,15 +21,18 @@ jobs:
       WD_KEY_PASS: ${{ secrets.WD_KEY_PASS }}
       HAVE_KEY: ${{ secrets.WD_KEYSTORE_B64 != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: android-actions/setup-android@v4
         with:
           cmdline-tools-version: "12266719"
           accept-android-sdk-licenses: true
           packages: "platform-tools platforms;android-34 build-tools;34.0.0"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with: { gradle-version: "8.7" }
       - name: Run Android unit tests
         run: gradle --no-daemon testDebugUnitTest
@@ -44,7 +47,24 @@ jobs:
       - name: Build debug (no key configured)
         if: env.HAVE_KEY != 'true'
         run: gradle --no-daemon assembleDebug
-      - uses: actions/upload-artifact@v4
+      # Emulator boot is not reliable on every hosted runner. Keep this end-to-end
+      # device test available on demand; PR validation still builds the APK and
+      # runs the embedded Python host lifecycle tests on Linux and Windows.
+      - name: Run Android phone-host integration test on emulator
+        if: github.event_name == 'workflow_dispatch'
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: "yes"
+        with:
+          api-level: 34
+          emulator-boot-timeout: 900
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: gradle --no-daemon connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v7
         with:
           name: windroida-apk
           path: |

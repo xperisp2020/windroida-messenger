@@ -7,7 +7,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -34,6 +33,10 @@ jobs:
           node --check ghab/web/static/app.js
           node --check cloud-drive/app/static/js/common.js
           node tests/test_webview_bridge.js
+      - name: Check embedded Android host runtime Python syntax
+        run: python -m py_compile android/app/src/main/python/android_host.py
+      - name: Test Android host runtime path configuration
+        run: python -m unittest -v test_android_host_runtime.py
       - name: Run private-key permission tests
         run: python -m unittest -v test_private_key_permissions.py
       - name: Run Ghab security tests
@@ -41,6 +44,10 @@ jobs:
       - name: Run Cloud Drive tests
         working-directory: cloud-drive
         run: python -m unittest discover -s tests -t . -v
+      - name: Run cross-platform host capacity tests
+        run: python -m unittest -v test_host_capacity.py test_host_capacity_integration.py
+      - name: Run TLS server shutdown integration tests
+        run: python -m unittest -v test_server_tls_shutdown.py
       - name: Run messenger security tests
         run: python test_security.py
       - name: Run gateway security tests
@@ -59,6 +66,16 @@ jobs:
           python -m pip install -r requirements-all.txt
       - name: Verify owner-only Windows ACLs
         run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
+      - name: Verify host capacity policy and server integration on Windows
+        run: python -m unittest -v test_host_capacity.py test_host_capacity_integration.py
+      - name: Run TLS server shutdown integration tests on Windows
+        run: python -m unittest -v test_server_tls_shutdown.py
+      - name: Run Android host runtime path tests on Windows
+        run: python -m unittest -v test_android_host_runtime.py
+      - name: Run messenger security integration tests on Windows
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python test_security.py
       - name: Verify Cloud Drive session-secret ACLs
         working-directory: cloud-drive
         run: python -m unittest -v tests.test_sso.TestSso.test_session_secret_windows_acl_is_owner_only
