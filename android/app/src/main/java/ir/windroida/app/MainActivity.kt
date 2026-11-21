@@ -56,10 +56,10 @@ class MainActivity : Activity() {
     private var pendingPerm: PermissionRequest? = null
     private var pendingChat = 0
     private var pageReady = false
-    private var bridgeNonce = ""
-    private var internalLaunch = false
-    private var internalOnly = false
-    private var internalOnce = false
+    @Volatile private var bridgeNonce = ""
+    @Volatile private var internalLaunch = false
+    @Volatile private var internalOnly = false
+    @Volatile private var internalOnce = false
     private lateinit var splash: SplashView
     private lateinit var errBox: android.widget.LinearLayout
     private val ui = Handler(Looper.getMainLooper())
