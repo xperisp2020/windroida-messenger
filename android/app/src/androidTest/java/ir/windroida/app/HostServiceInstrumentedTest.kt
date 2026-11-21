@@ -28,6 +28,7 @@ class HostServiceInstrumentedTest {
         val scenario = ActivityScenario.launch(HostActivity::class.java)
         val prefs = context.getSharedPreferences("wd_host", Context.MODE_PRIVATE)
         var webPort = 8081
+        var tcpPort = 8765
         try {
             HostService.start(context)
             val startDeadline = System.currentTimeMillis() + 120_000
@@ -38,6 +39,8 @@ class HostServiceInstrumentedTest {
             }
             assertTrue("Android foreground host did not become ready", prefs.getBoolean("running", false))
             webPort = prefs.getInt("web_port", 8081)
+            tcpPort = prefs.getInt("tcp_port", 8765)
+            assertTrue("Messenger TCP listener did not open", canConnect(tcpPort))
 
             val connection = URL("https://127.0.0.1:$webPort/").openConnection() as HttpsURLConnection
             connection.sslSocketFactory = trustAllContext().socketFactory
@@ -64,6 +67,7 @@ class HostServiceInstrumentedTest {
             if (stillListening) Thread.sleep(250)
         }
         assertFalse("HTTPS listener remained open after stopping the host", stillListening)
+        assertFalse("Messenger TCP listener remained open after stopping the host", canConnect(tcpPort))
         assertFalse("Host service still reports running", prefs.getBoolean("running", false))
     }
 
