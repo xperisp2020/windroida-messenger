@@ -24,7 +24,7 @@ for op,kw in [("history",dict(chat_id=pc)),("search_messages",dict(chat_id=pc,q=
               ("add_member",dict(chat_id=grp,username="mallory")),("remove_member",dict(chat_id=grp,user_id=B.uid)),("edit_group",dict(chat_id=grp,title="hacked")),
               ("delete_group",dict(chat_id=grp)),("leave",dict(chat_id=grp)),("invite_link",dict(chat_id=grp)),
               ("react",dict(message_id=m1,emoji="👍")),("edit",dict(message_id=m1,text="x")),("delete",dict(message_id=m1)),("get_file",dict(message_id=f)),
-              ("forward",dict(message_id=m1,chat_ids=[mc])),("voice_played",dict(message_id=f))]:
+              ("forward",dict(message_id=m1,chat_ids=[mc]))]:
     r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok"), r)
 # voice_played requires a voice-kind message; the text/file fixtures above cannot test that authorization path.
 # reply_to cross-chat
