@@ -335,7 +335,10 @@ class MainActivity : Activity() {
             .setPositiveButton("ذخیره") { _, _ ->
                 val v = et.text.toString().trim().trimEnd('/')
                 if (v.startsWith("http://") || v.startsWith("https://")) {
-                    if (v != Prefs.server(this)) { Prefs.setPin(this, ""); Prefs.setToken(this, ""); NotifyService.stop(this); MediaCache.clearAll() }
+                    if (v != Prefs.server(this)) {
+                        Prefs.setPin(this, ""); Prefs.setToken(this, ""); NotifyService.stop(this); MediaCache.clearAll()
+                        getSharedPreferences("wd", MODE_PRIVATE).edit().remove("drive_port").remove("ghab_port").apply()
+                    }
                     Prefs.setServer(this, v)
                     web.clearCache(true)
                     web.loadUrl(withBridgeNonce(v))
@@ -582,9 +585,11 @@ class MainActivity : Activity() {
                     // This bridge is for web destinations only; never let page script trigger arbitrary Android intent schemes.
                     if (TrustedOrigin.canonicalOrigin(url) == null) return@runOnUiThread
                     val s = Prefs.server(this@MainActivity)
+                    val servicePrefs = getSharedPreferences("wd", MODE_PRIVATE)
                     val servicePorts = setOf(
                         8082, // Cloud Drive default port
-                        getSharedPreferences("wd", MODE_PRIVATE).getInt("ghab_port", 0)
+                        servicePrefs.getInt("drive_port", 0),
+                        servicePrefs.getInt("ghab_port", 0)
                     ).filter { it in 1..65535 }.toSet()
                     val trustedService = TrustedOrigin.isAllowedService(s, url, servicePorts)
                     if (trustedService) startActivity(Intent(this@MainActivity, SiteActivity::class.java).putExtra("url", url))
@@ -593,6 +598,18 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "مرورگر پیدا نشد", Toast.LENGTH_LONG).show()
                 }
             }
+        }
+
+        /** Ports are persisted only after the same-origin app receives its authenticated SSO response. */
+        @JavascriptInterface
+        fun setServicePort(nonce: String, service: String, port: Int) {
+            if (!valid(nonce) || port !in 1..65535) return
+            val key = when (service) {
+                "drive" -> "drive_port"
+                "ghab" -> "ghab_port"
+                else -> return
+            }
+            getSharedPreferences("wd", MODE_PRIVATE).edit().putInt(key, port).apply()
         }
 
         @JavascriptInterface
