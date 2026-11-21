@@ -1306,7 +1306,7 @@ function dlgSettings(){
     h('hr'),h('b',{},'میزبانی و ظرفیت سرور'),
     h('div',{class:'muted',style:'font-size:12px;line-height:1.8;margin:5px 0'},'این محدودیت‌ها روی سرور اعمال می‌شوند و برای کاربران Android و Windows یکسان هستند. مقدار صفر یعنی بدون محدودیت.'),
     h('label',{},'حداکثر اعضای ثبت‌نام‌شده'),hostMembers,
-    h('label',{},'حداکثر کاربران آنلاین هم‌زمان'),hostOnline,
+    h('label',{},'حداکثر کاربران آنلاین هم‌زمان (با احتساب مالک)'),hostOnline,
     h('button',{class:'btn soft',style:'display:block;margin-top:8px',onclick:async()=>{
       try{
         const r=await call('host_limits',{action:'set',max_members:hostMembers.value,max_online:hostOnline.value});
