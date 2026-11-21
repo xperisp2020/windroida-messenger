@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.NetworkInterface
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -53,6 +54,7 @@ class HostService : Service() {
     @Volatile private var stopRequested = false
     private var worker: Thread? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -72,6 +74,7 @@ class HostService : Service() {
         stopRequested = false
         startForegroundCompat(hostNotification("در حال آماده‌سازی سرور…"))
         acquireWakeLock()
+        acquireWifiLock()
         if (worker?.isAlive != true) {
             worker = Thread({ startHosting() }, "windroida-android-host").also {
                 it.isDaemon = true
@@ -104,6 +107,27 @@ class HostService : Service() {
         } catch (_: Exception) {
             wakeLock = null
         }
+    }
+
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+        try {
+            wifiLock = getSystemService(WifiManager::class.java)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Windroida:Host").also {
+                    it.setReferenceCounted(false)
+                    it.acquire()
+                }
+        } catch (_: Exception) {
+            wifiLock = null
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            wifiLock?.takeIf { it.isHeld }?.release()
+        } catch (_: Exception) {
+        }
+        wifiLock = null
     }
 
     private fun releaseWakeLock() {
@@ -151,6 +175,7 @@ class HostService : Service() {
                 .apply()
             stopRequested = true
             releaseWakeLock()
+            releaseWifiLock()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -265,6 +290,7 @@ class HostService : Service() {
             }
         }
         releaseWakeLock()
+        releaseWifiLock()
         super.onDestroy()
     }
 }
