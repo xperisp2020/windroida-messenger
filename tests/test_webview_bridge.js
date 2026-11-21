@@ -35,6 +35,8 @@ function run(code, hash, storedNonce = '') {
 const nonce = 'a'.repeat(43);
 const web = read('web/app.js');
 assert.equal((web.match(/const noncePart=parts\.find/g) || []).length, 1, 'main WebView nonce bootstrap must exist exactly once');
+assert.match(read('web/index.html'), /frame-src 'none'/, 'messenger WebView must not load frames');
+assert.match(read('ghab/web/index.html'), /frame-src 'none'/, 'Ghab WebView must not load frames');
 const mainCode = bootstrap(web, 'The Android Java bridge is callable from every WebView frame');
 const first = run(mainCode, `#room=42&wdnonce=${nonce}`);
 assert.equal(first.replaced, '/?test=1#room=42');
