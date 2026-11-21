@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -78,6 +79,19 @@ for port in (tcp_port, web_port):
 """
 
 class AndroidHostRuntimeTests(unittest.TestCase):
+    def test_host_secrets_are_excluded_from_cloud_backup_and_device_transfer(self):
+        rules = ET.parse(
+            REPO_ROOT / "android" / "app" / "src" / "main" / "res" / "xml" / "data_extraction_rules.xml"
+        ).getroot()
+        for section_name in ("cloud-backup", "device-transfer"):
+            section = rules.find(section_name)
+            self.assertIsNotNone(section, f"missing {section_name} rules")
+            excluded = {(item.get("domain"), item.get("path")) for item in section.findall("exclude")}
+            self.assertIn(("sharedpref", "wd.xml"), excluded)
+            self.assertIn(("sharedpref", "wd_host.xml"), excluded)
+            self.assertIn(("sharedpref", "wd_host_return.xml"), excluded)
+            self.assertIn(("file", "windroida/"), excluded)
+
     def test_private_paths_and_embedded_server_start_stop(self):
         with tempfile.TemporaryDirectory(prefix="windroida-android-host-") as temp:
             env = os.environ.copy()
