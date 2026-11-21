@@ -464,18 +464,22 @@ class MainActivity : Activity() {
     }
 
     inner class Bridge {
+        private fun valid(nonce: String?): Boolean = nonce != null &&
+            java.security.MessageDigest.isEqual(bridgeNonce.toByteArray(Charsets.UTF_8), nonce.toByteArray(Charsets.UTF_8))
+
         /** web drawer -> "new native app" */
-        @JavascriptInterface fun mode(): String = Prefs.mode(this@MainActivity)
-        /** the native app opened this page only for a room / game: the page hides the chat UI and calls close() when done */
-        @JavascriptInterface fun only(): Boolean = intent.getBooleanExtra("only", false)
-        @JavascriptInterface fun nativeToken(): String = if (intent.getBooleanExtra("only", false)) Prefs.token(this@MainActivity) else ""
-        @JavascriptInterface fun close() { runOnUiThread { if (intent.getBooleanExtra("once", false)) finish() } }
+        @JavascriptInterface fun mode(nonce: String): String = if (valid(nonce)) Prefs.mode(this@MainActivity) else ""
+        /** Privileged one-off mode is accepted only from a nonce-authenticated internal launch. */
+        @JavascriptInterface fun only(nonce: String): Boolean = valid(nonce) && internalOnly
+        @JavascriptInterface fun nativeToken(nonce: String): String = if (valid(nonce) && internalOnly) Prefs.token(this@MainActivity) else ""
+        @JavascriptInterface fun close(nonce: String) { if (valid(nonce)) runOnUiThread { if (internalOnce) finish() } }
         @JavascriptInterface
-        fun useNative() { runOnUiThread { try { java.io.File(filesDir, "native-crash.txt").delete() } catch (_: Exception) {}; Prefs.setMode(this@MainActivity, "native"); startActivity(Intent(this@MainActivity, NativeActivity::class.java)); finish() } }
+        fun useNative(nonce: String) { if (!valid(nonce)) return; runOnUiThread { try { java.io.File(filesDir, "native-crash.txt").delete() } catch (_: Exception) {}; Prefs.setMode(this@MainActivity, "native"); startActivity(Intent(this@MainActivity, NativeActivity::class.java)); finish() } }
 
         /** status/navigation bar colour follows the page theme */
         @JavascriptInterface
-        fun setBar(color: String, dark: Boolean) {
+        fun setBar(nonce: String, color: String, dark: Boolean) {
+            if (!valid(nonce)) return
             runOnUiThread {
                 try {
                     val c = Color.parseColor(color)
@@ -493,11 +497,15 @@ class MainActivity : Activity() {
 
         /** files / text another app shared to Windroida (returned once; the page then asks which chat) */
         @JavascriptInterface
-        fun takeShare(): String { synchronized(shareLock) { val j = shareJson ?: ""; shareJson = null; return j } }
+        fun takeShare(nonce: String): String {
+            if (!valid(nonce)) return ""
+            synchronized(shareLock) { val j = shareJson ?: ""; shareJson = null; return j }
+        }
 
         /** short haptic tick (chess moves etc.); capped so a page cannot make the phone buzz for long */
         @JavascriptInterface
-        fun vibrate(ms: Int) {
+        fun vibrate(nonce: String, ms: Int) {
+            if (!valid(nonce)) return
             try {
                 val v = getSystemService(Vibrator::class.java) ?: return
                 if (ms in 1..400) v.vibrate(VibrationEffect.createOneShot(ms.toLong(), VibrationEffect.DEFAULT_AMPLITUDE))
@@ -506,7 +514,8 @@ class MainActivity : Activity() {
 
         /** keep the screen on while a chess game / watch-room is open */
         @JavascriptInterface
-        fun keepAwake(on: Boolean) {
+        fun keepAwake(nonce: String, on: Boolean) {
+            if (!valid(nonce)) return
             runOnUiThread {
                 if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -514,31 +523,32 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun playVideo(url: String, title: String) { runOnUiThread { this@MainActivity.playVideo(url, title) } }
+        fun playVideo(nonce: String, url: String, title: String) { if (valid(nonce)) runOnUiThread { this@MainActivity.playVideo(url, title) } }
 
         @JavascriptInterface
-        fun saveFile(url: String, name: String) { runOnUiThread { this@MainActivity.saveFile(url, name) } }
+        fun saveFile(nonce: String, url: String, name: String) { if (valid(nonce)) runOnUiThread { this@MainActivity.saveFile(url, name) } }
 
         @JavascriptInterface
-        fun cacheInfo(): String = MediaCache.info()
+        fun cacheInfo(nonce: String): String = if (valid(nonce)) MediaCache.info() else "{}"
 
         @JavascriptInterface
-        fun cacheClear() { MediaCache.clearMedia() }
+        fun cacheClear(nonce: String) { if (valid(nonce)) MediaCache.clearMedia() }
 
         @JavascriptInterface
-        fun cacheLimit(mb: Int) { MediaCache.setLimitMb(mb) }
+        fun cacheLimit(nonce: String, mb: Int) { if (valid(nonce)) MediaCache.setLimitMb(mb) }
 
         @JavascriptInterface
-        fun changeServer() { runOnUiThread { askServer(true) } }
+        fun changeServer(nonce: String) { if (valid(nonce)) runOnUiThread { askServer(true) } }
 
         /** Cloud Drive / Ghab (own port, same host as the server) open in their own in-app screen (SiteActivity: pinned certificate,
          *  file picker, native downloads); any other link goes to the system browser */
         @JavascriptInterface
-        fun openExternal(url: String) {
+        fun openExternal(nonce: String, url: String) {
+            if (!valid(nonce)) return
             runOnUiThread {
                 try {
                     val s = Prefs.server(this@MainActivity)
-                    val sameHost = try { s.isNotEmpty() && URL(s).host == URL(url).host && URL(s).protocol == URL(url).protocol } catch (_: Exception) { false }
+                    val sameHost = TrustedOrigin.sameHostAndScheme(s, url)
                     if (sameHost) startActivity(Intent(this@MainActivity, SiteActivity::class.java).putExtra("url", url))
                     else startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (_: Exception) {
@@ -548,7 +558,8 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun setToken(t: String) {
+        fun setToken(nonce: String, t: String) {
+            if (!valid(nonce)) return
             Prefs.setToken(this@MainActivity, t)
             if (t.isEmpty()) { NotifyService.stop(this@MainActivity); MediaCache.clearAll() } else {
                 NotifyService.start(this@MainActivity)
