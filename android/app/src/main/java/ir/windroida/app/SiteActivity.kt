@@ -87,6 +87,7 @@ class SiteActivity : Activity() {
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? =
                 try { wc.handle(r.url.toString(), r.method, r.requestHeaders ?: emptyMap()) } catch (_: Exception) { null }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
+                if (e.primaryError != SslError.SSL_UNTRUSTED) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
                 if (TrustedOrigin.sameHostAndScheme(Prefs.server(this@SiteActivity), e.url) &&
                     cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
