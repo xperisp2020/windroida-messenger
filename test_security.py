@@ -15,6 +15,10 @@ A,B,M,G=cl("alice"),cl("bobby"),cl("mallory"),cl("gina")
 pc=A.call("open_private",username="bobby")["chat"]["id"]
 m1=A.call("send",chat_id=pc,text="سری: رمز وای‌فای 1234")["message"]["id"]
 f=A.call("send",chat_id=pc,text="",file={"name":"s.txt","data":base64.b64encode(b"secret"*50).decode()})["message"]["id"]
+voice_result=A.call("send",chat_id=pc,text="",file={"name":"voice.ogg","data":base64.b64encode(b"voice fixture").decode(),
+    "voice":{"dur":1.0,"wave":[1,2,3]}})
+voice_msg=voice_result["message"]["id"]
+ok("voice fixture is a voice message", bool(voice_result["message"].get("file",{}).get("voice")))
 grp=A.call("create_group",title="تیم",usernames=["bobby"])["chat"]["id"]
 gm=A.call("send",chat_id=grp,text="پیام گروه")["message"]["id"]
 mc=M.call("open_private",username="gina")["chat"]["id"]
@@ -24,9 +28,8 @@ for op,kw in [("history",dict(chat_id=pc)),("search_messages",dict(chat_id=pc,q=
               ("add_member",dict(chat_id=grp,username="mallory")),("remove_member",dict(chat_id=grp,user_id=B.uid)),("edit_group",dict(chat_id=grp,title="hacked")),
               ("delete_group",dict(chat_id=grp)),("leave",dict(chat_id=grp)),("invite_link",dict(chat_id=grp)),
               ("react",dict(message_id=m1,emoji="👍")),("edit",dict(message_id=m1,text="x")),("delete",dict(message_id=m1)),("get_file",dict(message_id=f)),
-              ("forward",dict(message_id=m1,chat_ids=[mc]))]:
+              ("forward",dict(message_id=m1,chat_ids=[mc])),("voice_played",dict(message_id=voice_msg))]:
     r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok"), r)
-# voice_played requires a voice-kind message; the text/file fixtures above cannot test that authorization path.
 # reply_to cross-chat
 r=M.call("send",chat_id=mc,text="reply",reply_to=m1); ok("cross-chat reply_to doesn't leak", (not r.get("ok")) or not json.dumps(r,ensure_ascii=False).count("1234"), r)
 # member bob (non-owner) vs group admin actions
