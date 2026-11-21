@@ -2,6 +2,7 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="wd.xml" />
+        <exclude domain="sharedpref" path="wd_internal_launch.xml" />
         <exclude domain="root" path="app_webview/" />
     </cloud-backup>
     <device-transfer>
