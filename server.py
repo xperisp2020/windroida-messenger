@@ -26,6 +26,7 @@ from pathlib import Path
 from collections import defaultdict, deque
 
 import common
+import host_capacity
 from rooms import make_rooms
 from mafia_room import make_mafia
 from mensch_room import make_mensch
@@ -296,6 +297,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 log("WARNING: database integrity check failed:", qc, "- stop the server and restore data/windroida.db from a copy")
         except sqlite3.Error as e:
             log("WARNING: database check error:", repr(e))
+        host_capacity.ensure_schema(boot)
+        boot.commit()
         self._ensure_channel(boot)
         n = migrate_legacy_uploads(boot)
         if n:
@@ -898,9 +901,14 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         return token, cur.lastrowid
 
     def _login_ok(self, conn, row, device=None):
-        conn.uid = row["id"]
         with self.sessions_lock:
-            first = not self.sessions[row["id"]]
+            limits = host_capacity.get_limits(conn.db)
+            try:
+                host_capacity.check_online_capacity(self.sessions, row["id"], limits["max_online"])
+            except host_capacity.CapacityReached as e:
+                raise Fail(str(e))
+            first = not any(c.alive for c in self.sessions.get(row["id"], []))
+            conn.uid = row["id"]
             self.sessions[row["id"]].append(conn)
         with conn.db:
             conn.db.execute("UPDATE users SET last_seen=? WHERE id=?", (now(), row["id"]))
@@ -982,12 +990,23 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         ps, ph = hash_secret(password)
         ss, sh = hash_secret(answer)
         try:
-            with conn.db:
-                cur = conn.db.execute(
-                    "INSERT INTO users(username, display_name, pw_salt, pw_hash, sec_question, sec_salt, sec_hash,"
-                    " created_at) VALUES (?,?,?,?,?,?,?,?)", (username, display, ps, ph, question, ss, sh, now()))
+            conn.db.execute("BEGIN IMMEDIATE")
+            try:
+                host_capacity.check_registration_capacity(conn.db, ADMIN_USER)
+            except host_capacity.CapacityReached as e:
+                conn.db.rollback()
+                raise Fail(str(e))
+            cur = conn.db.execute(
+                "INSERT INTO users(username, display_name, pw_salt, pw_hash, sec_question, sec_salt, sec_hash,"
+                " created_at) VALUES (?,?,?,?,?,?,?,?)", (username, display, ps, ph, question, ss, sh, now()))
+            conn.db.commit()
         except sqlite3.IntegrityError:
+            conn.db.rollback()
             raise Fail("این نام کاربری قبلاً گرفته شده")
+        except Exception:
+            if conn.db.in_transaction:
+                conn.db.rollback()
+            raise
         row = conn.db.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
         try:
             self._ensure_channel(conn.db)
@@ -1231,6 +1250,38 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
     def op_me(self, conn, req):
         row = conn.db.execute("SELECT * FROM users WHERE id=?", (conn.uid,)).fetchone()
         return {"me": self._me_view(row)}
+
+    def op_host_limits(self, conn, req):
+        """Read host capacity or update it from the owner account."""
+        row = conn.db.execute("SELECT username FROM users WHERE id=?", (conn.uid,)).fetchone()
+        if not row:
+            raise Fail("حساب معتبر نیست")
+        action = str(req.get("action") or "get").lower()
+        if action == "set":
+            if row["username"].lower() != ADMIN_USER:
+                raise Fail("فقط مالک سرور می‌تواند ظرفیت را تغییر دهد")
+            try:
+                with self.sessions_lock:
+                    limits = host_capacity.set_limits(
+                        conn.db, req.get("max_members"), req.get("max_online"), now()
+                    )
+            except host_capacity.InvalidCapacity:
+                raise Fail("ظرفیت نامعتبر است؛ سقف اعضا ۰ تا ۱۰۰۰۰۰ و سقف آنلاین ۰ تا ۵۰۰۰ است")
+        elif action == "get":
+            limits = host_capacity.get_limits(conn.db)
+        else:
+            raise Fail("عملیات ظرفیت نامعتبر است")
+        members = conn.db.execute(
+            "SELECT COUNT(*) FROM users WHERE username COLLATE NOCASE <> ?", (ADMIN_USER,)
+        ).fetchone()[0]
+        with self.sessions_lock:
+            online = host_capacity.online_user_count(self.sessions)
+        return {
+            "capacity": limits,
+            "members": int(members),
+            "online": int(online),
+            "unlimited_value": 0,
+        }
 
     @staticmethod
     def _check_display_name(display, username):
