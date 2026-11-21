@@ -183,11 +183,12 @@ function applySize(n){document.body.style.fontSize=n+'px';lsSet('wd-size',n)}
   const raw=window.WD;
   const parts=location.hash.slice(1).split('&').filter(Boolean);
   const noncePart=parts.find(x=>x.startsWith('wdnonce='));
-  const nonce=noncePart?noncePart.slice('wdnonce='.length):'';
+  let nonce=noncePart?noncePart.slice('wdnonce='.length):'';
   if(noncePart){
+    try{sessionStorage.setItem('__wd_main_bridge_nonce',nonce)}catch{}
     const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');
     try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}
-  }
+  }else{try{nonce=sessionStorage.getItem('__wd_main_bridge_nonce')||''}catch{}}
   if(!raw)return;
   if(!/^[A-Za-z0-9_-]{40,50}$/.test(nonce)){window.WD=null;return}
   window.WD={
