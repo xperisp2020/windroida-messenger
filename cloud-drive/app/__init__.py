@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 from datetime import timedelta
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -47,7 +48,7 @@ def _write_secret_file(path, value):
         if os.name == "posix":
             os.fchmod(fd, 0o600)
         elif os.name == "nt":
-            _restrict_secret_file(__import__("pathlib").Path(tmp))
+            _restrict_secret_file(Path(tmp))
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(value)
             stream.flush()
