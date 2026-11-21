@@ -7,24 +7,26 @@ import java.util.Locale
 object TrustedOrigin {
     private data class Origin(val scheme: String, val host: String, val port: Int)
 
-    private fun parse(raw: String?): Origin? = try {
-        if (raw.isNullOrBlank() || raw.any { it.isWhitespace() || it.code < 0x20 }) return null
-        val uri = URI(raw)
-        if (!uri.isAbsolute || uri.isOpaque || uri.rawUserInfo != null) return null
-        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
-        if (scheme != "http" && scheme != "https") return null
-        val rawHost = uri.host ?: return null
-        if (rawHost.isBlank()) return null
-        val host = rawHost.trimEnd('.').lowercase(Locale.ROOT)
-        val port = when {
-            uri.port == -1 && scheme == "https" -> 443
-            uri.port == -1 && scheme == "http" -> 80
-            uri.port in 1..65535 -> uri.port
-            else -> return null
+    private fun parse(raw: String?): Origin? {
+        return try {
+            if (raw.isNullOrBlank() || raw.any { it.isWhitespace() || it.code < 0x20 }) return null
+            val uri = URI(raw)
+            if (!uri.isAbsolute || uri.isOpaque || uri.rawUserInfo != null) return null
+            val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
+            if (scheme != "http" && scheme != "https") return null
+            val rawHost = uri.host ?: return null
+            if (rawHost.isBlank()) return null
+            val host = rawHost.trimEnd('.').lowercase(Locale.ROOT)
+            val port = when {
+                uri.port == -1 && scheme == "https" -> 443
+                uri.port == -1 && scheme == "http" -> 80
+                uri.port in 1..65535 -> uri.port
+                else -> return null
+            }
+            Origin(scheme, host, port)
+        } catch (_: Exception) {
+            null
         }
-        Origin(scheme, host, port)
-    } catch (_: Exception) {
-        null
     }
 
     fun sameOrigin(expected: String?, candidate: String?): Boolean {
