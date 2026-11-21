@@ -623,7 +623,16 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 sock = self.ssl_ctx.wrap_socket(sock, server_side=True)
                 with self.conns_lock:
                     self.open_sockets.discard(raw_sock)
-                    self.open_sockets.add(sock)
+                    stopping = self._stop.is_set()
+                    if not stopping:
+                        self.open_sockets.add(sock)
+                if stopping:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                    self._conn_done(ip)
+                    return
         except Exception:
             self._forget_socket(raw_sock)
             try:
