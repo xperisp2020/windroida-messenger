@@ -48,9 +48,13 @@ def custom_cert():
     # ویندروید گواهی خودش را به همین سرور هم می‌دهد (GHAB_CERT / GHAB_KEY)
     ec, ek = os.environ.get('GHAB_CERT'), os.environ.get('GHAB_KEY')
     if ec and ek and os.path.exists(ec) and os.path.exists(ek):
+        _restrict_private_key(os.path.realpath(ek))
         return ec, ek
     crt, key = os.path.join(CUSTOM_DIR, 'fullchain.pem'), os.path.join(CUSTOM_DIR, 'privkey.pem')
-    return (crt, key) if os.path.exists(crt) and os.path.exists(key) else None
+    if os.path.exists(crt) and os.path.exists(key):
+        _restrict_private_key(os.path.realpath(key))
+        return crt, key
+    return None
 
 
 def _restrict_private_key(path):
