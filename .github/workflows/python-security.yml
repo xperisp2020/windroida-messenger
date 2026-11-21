@@ -35,7 +35,8 @@ jobs:
       - name: Run Ghab security tests
         run: python pentest_ghab.py
       - name: Run Cloud Drive tests
-        run: PYTHONPATH=cloud-drive python -m unittest discover -s cloud-drive/tests -v
+        working-directory: cloud-drive
+        run: python -m unittest discover -s tests -t . -v
       - name: Run messenger security tests
         run: python test_security.py
       - name: Run gateway security tests
