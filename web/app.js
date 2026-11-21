@@ -199,6 +199,28 @@ function applySize(n){document.body.style.fontSize=n+'px';lsSet('wd-size',n)}
     changeServer:()=>raw.changeServer(nonce), openExternal:u=>raw.openExternal(nonce,u), setToken:t=>raw.setToken(nonce,t)
   };
 })();
+/* Bind Android's JavaScript bridge to a per-load nonce in the top-level fragment.
+   WebView exposes addJavascriptInterface objects to every frame; calls without this nonce are rejected natively. */
+(()=>{
+  const raw=window.WD;
+  const parts=location.hash.slice(1).split('&').filter(Boolean);
+  const noncePart=parts.find(x=>x.startsWith('wdnonce='));
+  const nonce=noncePart?noncePart.slice('wdnonce='.length):'';
+  if(noncePart){
+    const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');
+    try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}
+  }
+  if(!raw)return;
+  if(!/^[A-Za-z0-9_-]{40,50}$/.test(nonce)){window.WD=null;return}
+  window.WD={
+    mode:()=>raw.mode(nonce), only:()=>raw.only(nonce), nativeToken:()=>raw.nativeToken(nonce), close:()=>raw.close(nonce),
+    useNative:()=>raw.useNative(nonce), setBar:(c,d)=>raw.setBar(nonce,c,d), takeShare:()=>raw.takeShare(nonce),
+    vibrate:ms=>raw.vibrate(nonce,ms), keepAwake:on=>raw.keepAwake(nonce,on),
+    playVideo:(u,t)=>raw.playVideo(nonce,u,t), saveFile:(u,n)=>raw.saveFile(nonce,u,n),
+    cacheInfo:()=>raw.cacheInfo(nonce), cacheClear:()=>raw.cacheClear(nonce), cacheLimit:mb=>raw.cacheLimit(nonce,mb),
+    changeServer:()=>raw.changeServer(nonce), openExternal:u=>raw.openExternal(nonce,u), setToken:t=>raw.setToken(nonce,t)
+  };
+})();
 let ws=null,nextId=1,pingTimer=null,reconnecting=false,lastRx=Date.now(),netT=null,pingFails=0;const pending=new Map();
 const getToken=()=>lsGet('wd-token'),setToken=t=>{lsSet('wd-token',t);try{window.WD&&WD.setToken&&WD.setToken(t||'')}catch{}};   // WD = bridge of the Android app (it keeps the token to poll for notifications)
 /* "only" mode: the native Android app opened this page just for a room / game. The chat UI stays hidden, the login of the native app is used,
