@@ -256,7 +256,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.web_port, self.web = web_port, None
         self.db_path = db_path or common.DB_PATH
         self.sessions = defaultdict(list)       # uid -> [Conn]
-        self.sessions_lock = threading.RLock()
+        self.sessions_lock = threading.Lock()
+        self.capacity_lock = threading.RLock()
         self.ip_hits = defaultdict(deque)       # ip -> timestamps of auth attempts
         self.send_hits = defaultdict(deque)     # uid -> timestamps of sent messages
         self._upload_inflight = 0               # bytes currently being streamed to disk by /upload (all users combined)
@@ -901,15 +902,16 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         return token, cur.lastrowid
 
     def _login_ok(self, conn, row, device=None):
-        with self.sessions_lock:
+        with self.capacity_lock:
             limits = host_capacity.get_limits(conn.db)
-            try:
-                host_capacity.check_online_capacity(self.sessions, row["id"], limits["max_online"])
-            except host_capacity.CapacityReached as e:
-                raise Fail(str(e))
-            first = not any(c.alive for c in self.sessions.get(row["id"], []))
-            conn.uid = row["id"]
-            self.sessions[row["id"]].append(conn)
+            with self.sessions_lock:
+                try:
+                    host_capacity.check_online_capacity(self.sessions, row["id"], limits["max_online"])
+                except host_capacity.CapacityReached as e:
+                    raise Fail(str(e))
+                first = not any(c.alive for c in self.sessions.get(row["id"], []))
+                conn.uid = row["id"]
+                self.sessions[row["id"]].append(conn)
         with conn.db:
             conn.db.execute("UPDATE users SET last_seen=? WHERE id=?", (now(), row["id"]))
         if first:
@@ -989,12 +991,13 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             raise Fail("این نام کاربری قبلاً گرفته شده")
         ps, ph = hash_secret(password)
         ss, sh = hash_secret(answer)
-        with self.sessions_lock:
+        with self.capacity_lock:
             limits = host_capacity.get_limits(conn.db)
-            try:
-                host_capacity.check_online_capacity(self.sessions, None, limits["max_online"])
-            except host_capacity.CapacityReached as e:
-                raise Fail(str(e))
+            with self.sessions_lock:
+                try:
+                    host_capacity.check_online_capacity(self.sessions, None, limits["max_online"])
+                except host_capacity.CapacityReached as e:
+                    raise Fail(str(e))
             try:
                 conn.db.execute("BEGIN IMMEDIATE")
                 try:
@@ -1267,7 +1270,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             if row["username"].lower() != ADMIN_USER:
                 raise Fail("فقط مالک سرور می‌تواند ظرفیت را تغییر دهد")
             try:
-                with self.sessions_lock:
+                with self.capacity_lock:
                     limits = host_capacity.set_limits(
                         conn.db, req.get("max_members"), req.get("max_online"), now()
                     )
