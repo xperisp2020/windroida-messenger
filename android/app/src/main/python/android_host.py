@@ -36,7 +36,7 @@ def _configure_paths(files_dir):
     return root
 
 
-def start_host(files_dir, lan_addresses=""):
+def start_host(files_dir, lan_addresses="", tcp_port=8765, web_port=8081):
     """Start the same TCP and HTTPS/WebSocket server used by the Windows launcher."""
     global _server
     with _lock:
@@ -60,10 +60,10 @@ def start_host(files_dir, lan_addresses=""):
 
         instance = WindroidaServer(
             host="0.0.0.0",
-            port=8765,
+            port=int(tcp_port),
             tls=True,
             db_path=root / "data" / "windroida.db",
-            web_port=8081,
+            web_port=int(web_port),
         )
         try:
             # seed_admin prints the generated password on desktop. Capture it here;
