@@ -30,7 +30,6 @@ def ensure_schema(db):
 
 
 def get_limits(db):
-    ensure_schema(db)
     row = db.execute("SELECT max_members, max_online FROM host_settings WHERE id=1").fetchone()
     return {"max_members": int(row["max_members"]), "max_online": int(row["max_online"])}
 
