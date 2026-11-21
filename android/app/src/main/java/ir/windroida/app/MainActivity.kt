@@ -401,7 +401,6 @@ class MainActivity : Activity() {
                         val c = URL(url).openConnection() as HttpURLConnection
                         if (c is HttpsURLConnection) {
                             c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(this)).socketFactory
-                            c.hostnameVerifier = HostnameVerifier { _, _ -> true }
                         }
                         c.connectTimeout = 10000
                         c.readTimeout = 30000
