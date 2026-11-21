@@ -2,8 +2,9 @@
 (()=>{
   const raw=window.WD;if(!raw)return;
   const parts=location.hash.slice(1).split('&').filter(Boolean);
-  const part=parts.find(x=>x.startsWith('wdnonce='));const nonce=part?part.slice(8):'';
-  if(part){const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}}
+  const part=parts.find(x=>x.startsWith('wdnonce='));let nonce=part?part.slice(8):'';
+  if(part){try{sessionStorage.setItem('__wd_site_bridge_nonce',nonce)}catch{};const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}}
+  else{try{nonce=sessionStorage.getItem('__wd_site_bridge_nonce')||''}catch{}}
   if(!/^[A-Za-z0-9_-]{40,50}$/.test(nonce)){window.WD=null;return}
   window.WD={
     saveFile:(u,n)=>raw.saveFile(nonce,u,n),
