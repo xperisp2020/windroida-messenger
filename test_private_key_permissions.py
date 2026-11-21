@@ -40,6 +40,28 @@ class PrivateFilePermissionTests(unittest.TestCase):
             finally:
                 config.DATA_DIR = original
 
+    def test_ghab_session_secret_is_atomically_replaced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original = config.DATA_DIR
+            real_replace = os.replace
+            try:
+                config.DATA_DIR = tmp
+                path = Path(tmp) / "secret.key"
+
+                def checked_replace(source, destination):
+                    self.assertEqual(Path(destination), path)
+                    self.assertEqual(stat.S_IMODE(Path(source).stat().st_mode), 0o600)
+                    self.assertEqual(len(Path(source).read_text(encoding="utf-8")), 64)
+                    real_replace(source, destination)
+
+                with mock.patch("ghab.server.config.os.replace", side_effect=checked_replace) as replace:
+                    value = config.secret_key()
+                self.assertEqual(len(value), 64)
+                replace.assert_called_once()
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            finally:
+                config.DATA_DIR = original
+
     def test_windroida_secret_loader_restricts_before_returning_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
             instance = object.__new__(server.WindroidaServer)
