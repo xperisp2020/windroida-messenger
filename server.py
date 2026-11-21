@@ -579,7 +579,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 break
             ip = addr[0] if addr else ""
             with self.conns_lock:
-                over = self.conns_total >= self.MAX_CONNS_TOTAL or self.conns_by_ip[ip] >= self.MAX_CONNS_PER_IP
+                over = self._stop.is_set() or self.conns_total >= self.MAX_CONNS_TOTAL or self.conns_by_ip[ip] >= self.MAX_CONNS_PER_IP
                 if not over:
                     self.conns_total += 1
                     self.conns_by_ip[ip] += 1
