@@ -153,6 +153,8 @@ class MainActivity : Activity() {
                     if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
                     return false
                 }
+                // Never launch external pages from an iframe. The native bridge is exposed to every WebView frame.
+                if (!r.isForMainFrame) return true
                 try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
                 return true
             }
