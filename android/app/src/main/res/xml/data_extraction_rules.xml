@@ -3,6 +3,9 @@
     <cloud-backup>
         <exclude domain="sharedpref" path="wd.xml" />
         <exclude domain="sharedpref" path="wd_internal_launch.xml" />
+        <exclude domain="sharedpref" path="wd_host.xml" />
+        <exclude domain="sharedpref" path="wd_host_return.xml" />
+        <exclude domain="file" path="windroida/" />
         <exclude domain="root" path="app_webview/" />
     </cloud-backup>
     <device-transfer>
