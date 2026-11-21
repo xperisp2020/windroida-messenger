@@ -402,6 +402,7 @@ class MainActivity : Activity() {
                         if (c is HttpsURLConnection) {
                             c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(this)).socketFactory
                         }
+                        c.instanceFollowRedirects = false
                         c.connectTimeout = 10000
                         c.readTimeout = 30000
                         if (c.responseCode != 200) throw RuntimeException("http " + c.responseCode)
