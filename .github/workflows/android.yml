@@ -63,7 +63,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: cd android && gradle --no-daemon connectedDebugAndroidTest
+          script: gradle --no-daemon connectedDebugAndroidTest
       - uses: actions/upload-artifact@v4
         with:
           name: windroida-apk
