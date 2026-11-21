@@ -16,7 +16,7 @@ android {
         versionName = "2.3"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
     }
-    sourceSets.getByName("main").assets.srcDir(rootProject.projectDir.parentFile.resolve("web"))
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/host-assets"))
     // A permanent release key of YOUR own (see README-android.md, "امضای ثابت"): Play Protect distrusts debug-signed apps far more.
     // The key never lives in the project: it is read from keystore.properties (local build) or WD_* environment variables (GitHub secrets).
     val ksProps = Properties().apply {
@@ -58,6 +58,11 @@ val syncHostPython = tasks.register<Copy>("syncHostPython") {
     into(layout.buildDirectory.dir("generated/chaquopy/main"))
 }
 
+val syncHostWebAssets = tasks.register<Copy>("syncHostWebAssets") {
+    from(rootProject.projectDir.parentFile.resolve("web"))
+    into(layout.buildDirectory.dir("generated/host-assets/windroida-web"))
+}
+
 chaquopy {
     defaultConfig {
         version = "3.11"
@@ -73,7 +78,7 @@ chaquopy {
     }
 }
 
-tasks.named("preBuild").configure { dependsOn(syncHostPython) }
+tasks.named("preBuild").configure { dependsOn(syncHostPython, syncHostWebAssets) }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
