@@ -115,6 +115,22 @@ class TestSso(SsoBase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.get_json()["error"], "expired")
 
+    def test_sso_username_must_match_windroida_username_rules(self):
+        r = self.client.get("/sso?t=" + self.token("bad!name"))
+        self.assertEqual(r.status_code, 400)
+
+    def test_sso_cannot_enter_existing_cloud_drive_admin_account(self):
+        c = dbm.connect(self.app.config["DB_PATH"])
+        c.execute(
+            "INSERT INTO users(username,email,display_name,password_hash,role,quota_bytes,created_at) "
+            "VALUES(?,?,?,?,?,?,?)",
+            ("windroida_admin", "", "Admin", "not-used-by-this-test", "admin", 1024, "2026-01-01T00:00:00Z"))
+        c.commit()
+        c.close()
+        r = self.client.get("/sso?t=" + self.token("windroida_admin"))
+        self.assertEqual(r.status_code, 403)
+        self.assertIsNone(self.client.get("/api/me").get_json().get("user"))
+
     def test_token_cannot_be_replayed_after_app_recreation(self):
         tok = self.token("grace")
         r1 = self.client.get("/sso?t=" + tok)
