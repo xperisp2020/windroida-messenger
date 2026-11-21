@@ -1,6 +1,7 @@
 """تنظیمات یک‌جا. همه مسیرها و عددها از اینجا می‌آیند."""
 import os
 import secrets
+import stat
 
 VERSION = '2.4.3'
 PORT = int(os.environ.get('GHAB_PORT', 8084))
@@ -35,16 +36,25 @@ def ensure_dirs():
 
 def secret_key():
     p = os.path.join(DATA_DIR, 'secret.key')
-    if not os.path.exists(p):
-        try:
-            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, 'w') as f:
-                f.write(secrets.token_hex(32))
-        except FileExistsError:
-            pass
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if os.path.islink(p):
+        raise PermissionError(f'refusing symlink for session secret: {p}')
     try:
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        fd = None
+    if fd is not None:
+        with os.fdopen(fd, 'w') as f:
+            f.write(secrets.token_hex(32))
+            f.flush()
+            os.fsync(f.fileno())
+    if os.name == 'posix':
         os.chmod(p, 0o600)
-    except OSError:
-        pass
-    with open(p) as f:
-        return f.read().strip()
+        mode = stat.S_IMODE(os.stat(p).st_mode)
+        if mode != 0o600:
+            raise PermissionError(f'session secret permissions are {mode:o}, expected 600: {p}')
+    with open(p, encoding='utf-8') as f:
+        value = f.read().strip()
+    if len(value) < 32:
+        raise RuntimeError('Ghab session secret is missing or too short')
+    return value
