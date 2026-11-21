@@ -265,6 +265,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         self.conns_lock = threading.Lock()
         self.conns_total = 0
         self.conns_by_ip = defaultdict(int)     # raw TCP connections currently open, before any login (flood guard)
+        self.open_sockets = set()               # includes unauthenticated sockets so stop() can close every client
         self.notify_q = defaultdict(lambda: deque(maxlen=50))   # uid -> recent {seq, chat_id, title, text} for the Android app's long-poll
         self.notify_seq = defaultdict(int)
         self.notify_cv = threading.Condition()
@@ -345,10 +346,17 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             self.listener.close()
         except Exception:
             pass
-        with self.sessions_lock:
-            conns = [c for lst in self.sessions.values() for c in lst]
-        for c in conns:
-            c.close()
+        with self.conns_lock:
+            sockets = list(self.open_sockets)
+        for sock in sockets:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     def _cert_names(self):
         names = {"localhost", "127.0.0.1", lan_ip(), socket.gethostname()}
@@ -563,12 +571,19 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 sock, addr = self.listener.accept()
             except OSError:
                 break
+            if self._stop.is_set():
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                break
             ip = addr[0] if addr else ""
             with self.conns_lock:
-                over = self.conns_total >= self.MAX_CONNS_TOTAL or self.conns_by_ip[ip] >= self.MAX_CONNS_PER_IP
+                over = self._stop.is_set() or self.conns_total >= self.MAX_CONNS_TOTAL or self.conns_by_ip[ip] >= self.MAX_CONNS_PER_IP
                 if not over:
                     self.conns_total += 1
                     self.conns_by_ip[ip] += 1
+                    self.open_sockets.add(sock)
             if over:         # too many open connections already (this IP, or overall): refuse before spending a thread/DB handle
                 try:
                     sock.close()
@@ -576,6 +591,10 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                     pass
                 continue
             threading.Thread(target=self._client_thread, args=(sock, addr), daemon=True).start()
+
+    def _forget_socket(self, sock):
+        with self.conns_lock:
+            self.open_sockets.discard(sock)
 
     def _conn_done(self, ip):
         with self.conns_lock:
@@ -587,22 +606,27 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
     # ------------------------------------------------------ per-connection
     def _client_thread(self, sock, addr):
         ip = addr[0] if addr else ""
+        raw_sock = sock
         try:
             sock.settimeout(120)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             if self.ssl_ctx:
                 sock = self.ssl_ctx.wrap_socket(sock, server_side=True)
+                with self.conns_lock:
+                    self.open_sockets.discard(raw_sock)
+                    self.open_sockets.add(sock)
         except Exception:
+            self._forget_socket(raw_sock)
             try:
-                sock.close()
+                raw_sock.close()
             except Exception:
                 pass
             self._conn_done(ip)
             return
         conn = Conn(self, sock, addr)
-        conn.db = connect_db(self.db_path)
         try:
+            conn.db = connect_db(self.db_path)
             while conn.alive:
                 req = recv_frame(sock)
                 self._dispatch(conn, req)
@@ -661,6 +685,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         except Exception:
             pass
         conn.close()
+        self._forget_socket(conn.sock)
 
     def _dispatch(self, conn, req):
         if not isinstance(req, dict):
