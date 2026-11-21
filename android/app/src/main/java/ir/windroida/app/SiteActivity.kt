@@ -24,7 +24,6 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 
 /**
@@ -41,20 +40,11 @@ class SiteActivity : Activity() {
     private var origin = ""
     private var cache: WebCache? = null
 
-    private fun originOf(u: String): String? = try {
-        val j = URL(u)
-        val p = if (j.port == -1) j.defaultPort else j.port
-        "${j.protocol}://${j.host}:$p"
-    } catch (_: Exception) { null }
+    private fun originOf(u: String): String? = TrustedOrigin.canonicalOrigin(u)
 
     /** same host (and scheme) as the Windroida server the app is set up for; the port may differ (Cloud Drive / Ghab have their own) */
     private fun sameHost(u: String): Boolean {
-        val s = Prefs.server(this)
-        return try {
-            val a = URL(s)
-            val b = URL(u)
-            s.isNotEmpty() && a.host == b.host && a.protocol == b.protocol
-        } catch (_: Exception) { false }
+        return TrustedOrigin.sameHostAndScheme(Prefs.server(this), u)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -85,7 +75,8 @@ class SiteActivity : Activity() {
                 try { wc.handle(r.url.toString(), r.method, r.requestHeaders ?: emptyMap()) } catch (_: Exception) { null }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
-                if (cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
+                if (TrustedOrigin.sameHostAndScheme(Prefs.server(this@SiteActivity), e.url) &&
+                    cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
                 else {
                     h.cancel()
                     Toast.makeText(this@SiteActivity, "گواهی با اثر انگشت تأییدشده نمی‌خونه؛ وصل نشد", Toast.LENGTH_LONG).show()
@@ -98,7 +89,9 @@ class SiteActivity : Activity() {
                 // open it inside the app instead of handing a self-signed https link to the system browser.
                 if (sameHost(u)) {
                     val hash = u.substringAfter('#', "").ifEmpty { null }
-                    startActivity(Intent(this@SiteActivity, MainActivity::class.java).putExtra("once", true).also { if (hash != null) it.putExtra("hash", hash) })
+                    val nonce = InternalWebLaunch.issue(this@SiteActivity)
+                    startActivity(Intent(this@SiteActivity, MainActivity::class.java).putExtra("once", true)
+                        .putExtra(InternalWebLaunch.EXTRA_NONCE, nonce).also { if (hash != null) it.putExtra("hash", hash) })
                     finish(); return true
                 }
                 try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
@@ -180,7 +173,6 @@ class SiteActivity : Activity() {
                 val c = URL(url).openConnection() as HttpURLConnection
                 if (c is HttpsURLConnection) {
                     c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(this)).socketFactory
-                    c.hostnameVerifier = HostnameVerifier { _, _ -> true }   // the pinned fingerprint is what we trust
                 }
                 c.instanceFollowRedirects = false
                 c.connectTimeout = 10000
