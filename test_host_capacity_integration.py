@@ -1,5 +1,6 @@
 """End-to-end tests for server-enforced host capacity on the real TCP protocol."""
 import os
+import socket
 import tempfile
 import time
 import unittest
@@ -162,6 +163,40 @@ class HostCapacityIntegrationTests(unittest.TestCase):
         self.assertEqual(status["members"], 2)
         self.assertEqual(status["online"], 2)
         self.assertTrue(status["is_owner"])
+
+    def test_stop_closes_unauthenticated_sockets_and_rejects_new_clients(self):
+        raw = socket.create_connection(("127.0.0.1", self.port), timeout=3)
+        raw.settimeout(3)
+        deadline = time.time() + 3
+        while time.time() < deadline:
+            with self.server.conns_lock:
+                accepted = self.server.conns_total > 0
+            if accepted:
+                break
+            time.sleep(0.02)
+        self.assertTrue(accepted, "raw unauthenticated socket was not accepted")
+
+        self.server.stop()
+        try:
+            received = raw.recv(1)
+        except OSError:
+            received = b""
+        self.assertEqual(received, b"", "server shutdown must close unauthenticated clients")
+
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with self.server.conns_lock:
+                total = self.server.conns_total
+                open_sockets = len(self.server.open_sockets)
+            if total == 0 and open_sockets == 0:
+                break
+            time.sleep(0.05)
+        self.assertEqual(total, 0, "connection counter did not drain after shutdown")
+        self.assertEqual(open_sockets, 0, "server retained sockets after shutdown")
+        with self.assertRaises(OSError):
+            socket.create_connection(("127.0.0.1", self.port), timeout=1)
+        raw.close()
+
 
 
 if __name__ == "__main__":
