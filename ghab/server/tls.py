@@ -60,12 +60,15 @@ def custom_cert():
 def _restrict_private_key(path):
     if os.path.islink(path):
         raise PermissionError(f'refusing symlink for private key: {path}')
-    if os.name != 'posix':
-        return
-    os.chmod(path, 0o600)
-    mode = stat.S_IMODE(os.stat(path).st_mode)
-    if mode != 0o600:
-        raise PermissionError(f'private key permissions are {mode:o}, expected 600: {path}')
+    if os.name == 'posix':
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        if mode != 0o600:
+            raise PermissionError(f'private key permissions are {mode:o}, expected 600: {path}')
+    elif os.name == 'nt':
+        account = subprocess.run(['whoami'], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(['icacls', path, '/inheritance:r', '/grant:r', f'{account}:(F)'],
+                       check=True, capture_output=True, text=True)
 
 
 def _write_key(path, key):
@@ -77,6 +80,8 @@ def _write_key(path, key):
     try:
         if os.name == 'posix':
             os.fchmod(fd, 0o600)
+        elif os.name == 'nt':
+            _restrict_private_key(tmp)
         with os.fdopen(fd, 'wb') as f:
             f.write(data)
             f.flush()
