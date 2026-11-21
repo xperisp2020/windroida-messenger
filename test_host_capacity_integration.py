@@ -50,6 +50,15 @@ class HostCapacityIntegrationTests(unittest.TestCase):
             except Exception:
                 pass
         cls.server.stop()
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            with cls.server.sessions_lock:
+                sessions_empty = not any(cls.server.sessions.values())
+            with cls.server.conns_lock:
+                connections_empty = cls.server.conns_total == 0
+            if sessions_empty and connections_empty:
+                break
+            time.sleep(0.05)
         cls.temp.cleanup()
         os.environ.pop("WINDROIDA_ADMIN_PASSWORD", None)
         os.environ.pop("WINDROIDA_ADMIN", None)
