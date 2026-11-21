@@ -43,6 +43,13 @@ object TrustedOrigin {
         return a.scheme == b.scheme && a.host == b.host
     }
 
+    fun isAllowedService(expected: String?, candidate: String?, additionalPorts: Set<Int>): Boolean {
+        val a = parse(expected) ?: return false
+        val b = parse(candidate) ?: return false
+        return a.scheme == b.scheme && a.host == b.host &&
+            (b.port == a.port || b.port in additionalPorts)
+    }
+
     fun canonicalOrigin(raw: String?): String? {
         val o = parse(raw) ?: return null
         val host = if (o.host.contains(':') && !o.host.startsWith("[")) "[${o.host}]" else o.host
