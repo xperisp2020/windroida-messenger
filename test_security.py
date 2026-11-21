@@ -26,6 +26,7 @@ for op,kw in [("history",dict(chat_id=pc)),("search_messages",dict(chat_id=pc,q=
               ("react",dict(message_id=m1,emoji="👍")),("edit",dict(message_id=m1,text="x")),("delete",dict(message_id=m1)),("get_file",dict(message_id=f)),
               ("forward",dict(message_id=m1,chat_ids=[mc])),("voice_played",dict(message_id=f))]:
     r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok"), r)
+# voice_played requires a voice-kind message; the text/file fixtures above cannot test that authorization path.
 # reply_to cross-chat
 r=M.call("send",chat_id=mc,text="reply",reply_to=m1); ok("cross-chat reply_to doesn't leak", (not r.get("ok")) or not json.dumps(r,ensure_ascii=False).count("1234"), r)
 # member bob (non-owner) vs group admin actions
