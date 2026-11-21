@@ -194,6 +194,7 @@ class HostService : Service() {
                 }
             }
             releaseWakeLock()
+            releaseWifiLock()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }, "windroida-stop-host").start()
