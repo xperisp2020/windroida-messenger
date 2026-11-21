@@ -7,6 +7,7 @@ the Windroida side); without that shared secret nobody can mint a token that pas
 be used to log in as someone else, pick an arbitrary username, or become admin (new accounts are always role=user).
 """
 import hmac as hmac_lib
+import re
 import secrets
 import sqlite3
 import time
@@ -19,6 +20,7 @@ from .security import client_ip, hash_password, limit_or_429, start_session
 from .services import get_int, log_activity, log_event, now
 
 bp = Blueprint("sso", __name__)
+USERNAME_RE = re.compile(r"^(?=.*[A-Za-z0-9])[A-Za-z0-9_]{3,32}$")
 
 def _check_replay(db, sig, keep_until):
     """Persist consumed signatures so a restart or second worker cannot reopen the replay window."""
@@ -45,7 +47,7 @@ def sso_login():
     if len(parts) != 4:
         fail("bad_token", "لینک نامعتبر است", "Invalid link", 400)
     username, expiry_s, nonce, sig = parts
-    if not (1 <= len(username) <= 32) or not expiry_s.isdigit() or not (1 <= len(nonce) <= 40) or len(sig) != 64:
+    if not USERNAME_RE.fullmatch(username) or not expiry_s.isdigit() or not (1 <= len(nonce) <= 40) or len(sig) != 64:
         fail("bad_token", "لینک نامعتبر است", "Invalid link", 400)
     expiry = int(expiry_s)
     expected = hmac_lib.new(secret.encode(), ("%s:%d:%s" % (username, expiry, nonce)).encode(), "sha256").hexdigest()
@@ -72,6 +74,9 @@ def sso_login():
         reason = row["banned_reason"]
         fail("account_disabled", "این حساب غیرفعال شده است" + (" (دلیل: %s)" % reason if reason else ""),
              "This account is disabled", 403)
+    elif row["role"] == "admin":
+        # A messenger identity must never inherit a standalone Cloud Drive administrator account.
+        fail("account_disabled", "ورود یکپارچه به حساب مدیر مجاز نیست", "SSO cannot enter a Cloud Drive administrator account", 403)
     start_session(db, row["id"])
     log_activity(db, row["id"], "sso_login", "", ip)
     return redirect("/")
