@@ -103,6 +103,12 @@ class SiteActivity : Activity() {
                     v.stopLoading()
                     return
                 }
+                // Restore the per-WebView nonce if a same-origin redirect or reload dropped the fragment.
+                if (!hasBridgeNonce(url)) {
+                    v.stopLoading()
+                    v.loadUrl(withBridgeNonce(url))
+                    return
+                }
                 super.onPageStarted(v, url, favicon)
             }
             // Ghab's photos and videos are kept on the phone (400 MB, like Instagram) and the pages work offline
