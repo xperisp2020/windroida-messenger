@@ -2,6 +2,7 @@
 import os
 import secrets
 import stat
+import subprocess
 
 VERSION = '2.4.3'
 PORT = int(os.environ.get('GHAB_PORT', 8084))
@@ -34,6 +35,20 @@ def ensure_dirs():
         os.makedirs(d, exist_ok=True)
 
 
+def _restrict_session_secret(path):
+    if os.path.islink(path):
+        raise PermissionError(f'refusing symlink for session secret: {path}')
+    if os.name == 'posix':
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        if mode != 0o600:
+            raise PermissionError(f'session secret permissions are {mode:o}, expected 600: {path}')
+    elif os.name == 'nt':
+        account = subprocess.run(['whoami'], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(['icacls', path, '/inheritance:r', '/grant:r', f'{account}:(F)'],
+                       check=True, capture_output=True, text=True)
+
+
 def secret_key():
     p = os.path.join(DATA_DIR, 'secret.key')
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -44,15 +59,13 @@ def secret_key():
     except FileExistsError:
         fd = None
     if fd is not None:
-        with os.fdopen(fd, 'w') as f:
+        os.close(fd)
+        _restrict_session_secret(p)
+        with open(p, 'w', encoding='utf-8') as f:
             f.write(secrets.token_hex(32))
             f.flush()
             os.fsync(f.fileno())
-    if os.name == 'posix':
-        os.chmod(p, 0o600)
-        mode = stat.S_IMODE(os.stat(p).st_mode)
-        if mode != 0o600:
-            raise PermissionError(f'session secret permissions are {mode:o}, expected 600: {p}')
+    _restrict_session_secret(p)
     with open(p, encoding='utf-8') as f:
         value = f.read().strip()
     if len(value) < 32:
