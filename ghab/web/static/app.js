@@ -1,3 +1,12 @@
+/* SiteActivity injects WD into every frame; require the private top-level fragment nonce before exposing it to app code. */
+(()=>{
+  const raw=window.WD;if(!raw)return;
+  const parts=location.hash.slice(1).split('&').filter(Boolean);
+  const part=parts.find(x=>x.startsWith('wdnonce='));const nonce=part?part.slice(8):'';
+  if(part){const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}}
+  if(!/^[A-Za-z0-9_-]{40,50}$/.test(nonce)){window.WD=null;return}
+  window.WD={playVideo:(u,t)=>raw.playVideo(nonce,u,t)};
+})();
 /* ---- رویدادهای درون‌خطی بدون eval: CSP دیگر 'unsafe-inline' برای اسکریپت ندارد.
    صفت data-onXXX فقط «نامِ تابعِ خودِ برنامه + آرگومان‌های ساده» را می‌پذیرد (رشته/عدد/this/event/this.value/this.checked)؛
    تابع بومی (eval، Function، …) و هر چیز دیگری اجرا نمی‌شود. ---- */
