@@ -109,6 +109,7 @@ class WindowsPrivateAclTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "secret.key"
             path.write_bytes(b"x" * 32)
+            subprocess.run(["icacls", str(path), "/grant", "*S-1-1-0:(F)"], check=True, capture_output=True, text=True)
             server._restrict_private_file(path)
             self.assert_owner_only_acl(path)
 
