@@ -3,6 +3,7 @@ import builtins
 import os
 import stat
 import shutil
+import sys
 import subprocess
 import tempfile
 import unittest
@@ -11,6 +12,20 @@ from pathlib import Path
 
 import server
 from ghab.server import config, tls
+
+
+class SsoSecretStrengthTests(unittest.TestCase):
+    def test_ghab_rejects_weak_configured_sso_secret(self):
+        ghab_dir = Path(__file__).parent / "ghab"
+        env = os.environ.copy()
+        env["GHAB_SSO_SECRET"] = "weak-sso-secret"
+        env["PYTHONPATH"] = str(ghab_dir)
+        result = subprocess.run(
+            [sys.executable, "-c", "from server import config"],
+            cwd=str(ghab_dir), env=env, capture_output=True, text=True
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("GHAB_SSO_SECRET", result.stderr)
 
 
 @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced the same way on Windows")
