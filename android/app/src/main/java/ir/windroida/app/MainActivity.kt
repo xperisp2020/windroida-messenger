@@ -184,8 +184,10 @@ class MainActivity : Activity() {
                 return true
             }
             override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-                // Chromium reports ERR_ABORTED (-8) when a blocked navigation is stopped.
-                if (r.isForMainFrame && e.errorCode != -8) {
+                // Only errors for the configured server should replace the app UI.
+                // In particular, do not confuse Android's ERROR_TIMEOUT (-8) with a canceled navigation.
+                if (r.isForMainFrame &&
+                    TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), r.url.toString())) {
                     showError()
                 }
             }
