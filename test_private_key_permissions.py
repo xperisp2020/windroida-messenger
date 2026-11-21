@@ -1,6 +1,7 @@
 """Regression tests for private-key and signing-secret file permissions."""
 import os
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -87,6 +88,49 @@ class PrivateFilePermissionTests(unittest.TestCase):
             path = Path(tmp) / "server-key.pem"
             tls._write_key(str(path), ec.generate_private_key(ec.SECP256R1()))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+@unittest.skipUnless(os.name == "nt", "Windows ACL checks run only on Windows")
+class WindowsPrivateAclTests(unittest.TestCase):
+    def assert_owner_only_acl(self, path):
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip().lower()
+        acl = subprocess.run(["icacls", str(path)], check=True, capture_output=True, text=True).stdout.lower()
+        self.assertIn(account, acl)
+        self.assertIn("(f)", acl)
+        for broad_principal in ("everyone", "authenticated users", "builtin\\users"):
+            self.assertNotIn(broad_principal, acl)
+
+    def test_windroida_secret_creation_sets_owner_acl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "secret.key"
+            server._write_private_bytes(path, b"w" * 32)
+            self.assert_owner_only_acl(path)
+
+    def test_existing_windroida_secret_acl_is_restricted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "secret.key"
+            path.write_bytes(b"x" * 32)
+            server._restrict_private_file(path)
+            self.assert_owner_only_acl(path)
+
+    def test_ghab_session_secret_creation_sets_owner_acl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original = config.DATA_DIR
+            try:
+                config.DATA_DIR = tmp
+                config.secret_key()
+                self.assert_owner_only_acl(Path(tmp) / "secret.key")
+            finally:
+                config.DATA_DIR = original
+
+    def test_ghab_tls_key_creation_sets_owner_acl(self):
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+        except ImportError:
+            self.skipTest("cryptography is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "server-key.pem"
+            tls._write_key(str(path), ec.generate_private_key(ec.SECP256R1()))
+            self.assert_owner_only_acl(path)
 
 
 if __name__ == "__main__":
