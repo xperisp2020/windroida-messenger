@@ -1,10 +1,13 @@
 """Single sign-on bridge (Windroida -> Cloud Drive): signature checks, replay, provisioning, access control."""
 import hashlib
+import os
+import stat
 import hmac
 import shutil
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 from app import create_app
 from app import db as dbm
@@ -35,6 +38,35 @@ class SsoBase(unittest.TestCase):
 
 
 class TestSso(SsoBase):
+    def test_session_secret_is_owner_only_and_existing_permissions_are_repaired(self):
+        from app import _resolve_secret
+        path = Path(self.tmp) / "secret.key"
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        path.chmod(0o644)
+        saved = self.app.config["SECRET_KEY"]
+        self.app.config["SECRET_KEY"] = None
+        try:
+            self.assertEqual(_resolve_secret(self.app), saved)
+        finally:
+            self.app.config["SECRET_KEY"] = saved
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    @unittest.skipIf(os.name == "nt", "symlink creation requires platform-specific Windows privileges")
+    def test_session_secret_symlink_is_rejected(self):
+        from app import _resolve_secret
+        path = Path(self.tmp) / "secret.key"
+        target = Path(self.tmp) / "unrelated.key"
+        path.unlink()
+        target.write_text("unrelated secret material", encoding="utf-8")
+        path.symlink_to(target)
+        saved = self.app.config["SECRET_KEY"]
+        self.app.config["SECRET_KEY"] = None
+        try:
+            with self.assertRaises(PermissionError):
+                _resolve_secret(self.app)
+        finally:
+            self.app.config["SECRET_KEY"] = saved
+
     def test_valid_token_logs_in_and_creates_account(self):
         r = self.client.get("/sso?t=" + self.token("alice"), follow_redirects=False)
         self.assertEqual(r.status_code, 302)
