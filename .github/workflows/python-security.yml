@@ -55,3 +55,6 @@ jobs:
           python -m pip install -r requirements-all.txt
       - name: Verify owner-only Windows ACLs
         run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
+      - name: Verify Cloud Drive session-secret ACLs
+        working-directory: cloud-drive
+        run: python -m unittest -v tests.test_sso.TestSso.test_session_secret_windows_acl_is_owner_only
