@@ -132,6 +132,14 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(Bridge(), "WD")
 
         web.webViewClient = object : WebViewClient() {
+            // Defense in depth: redirects must not land a foreign document inside a WebView with a native bridge.
+            override fun onPageStarted(v: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                if (!TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), url)) {
+                    v.stopLoading()
+                    return
+                }
+                super.onPageStarted(v, url, favicon)
+            }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
                 if (!isPinEligibleSslError(e) ||
                     !TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), e.url)) { h.cancel(); return }
