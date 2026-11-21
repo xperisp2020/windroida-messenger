@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONObject
+import java.io.File
 import java.net.Inet4Address
 import java.util.Collections
 
@@ -31,7 +32,7 @@ class HostService : Service() {
 
         fun start(context: Context) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putBoolean("enabled", true).apply()
+                .edit().putBoolean("enabled", true).putString("error", "").putBoolean("running", false).apply()
             ContextCompat.startForegroundService(
                 context, Intent(context, HostService::class.java).setAction(ACTION_START)
             )
@@ -117,6 +118,7 @@ class HostService : Service() {
         try {
             synchronized(pythonLock) {
                 if (stopRequested) return
+                installWebAssets()
                 if (!Python.isStarted()) Python.start(AndroidPlatform(this))
                 if (stopRequested) return
 
@@ -144,6 +146,7 @@ class HostService : Service() {
         } catch (error: Throwable) {
             prefs.edit()
                 .putBoolean("running", false)
+                .putBoolean("enabled", false)
                 .putString("error", error.message ?: error.javaClass.simpleName)
                 .apply()
             stopRequested = true
@@ -155,7 +158,7 @@ class HostService : Service() {
 
     private fun stopHosting() {
         stopRequested = true
-        prefs.edit().putBoolean("running", false).apply()
+        prefs.edit().putBoolean("running", false).putString("error", "").apply()
         Thread({
             synchronized(pythonLock) {
                 try {
@@ -169,6 +172,34 @@ class HostService : Service() {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }, "windroida-stop-host").start()
+    }
+
+    private fun installWebAssets() {
+        val webDir = File(filesDir, "windroida/web")
+        val stamp = File(webDir, ".windroida-assets-version")
+        val version = BuildConfig.VERSION_CODE.toString()
+        if (stamp.isFile && runCatching { stamp.readText() == version }.getOrDefault(false)) return
+        if (webDir.exists()) webDir.deleteRecursively()
+        webDir.mkdirs()
+        copyAssetTree("", webDir)
+        stamp.writeText(version)
+    }
+
+    private fun copyAssetTree(assetPath: String, target: File) {
+        val children = assets.list(assetPath) ?: emptyArray()
+        if (children.isEmpty()) {
+            if (assetPath.isEmpty()) return
+            target.parentFile?.mkdirs()
+            assets.open(assetPath).use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            return
+        }
+        target.mkdirs()
+        for (child in children) {
+            val childPath = if (assetPath.isEmpty()) child else "$assetPath/$child"
+            copyAssetTree(childPath, File(target, child))
+        }
     }
 
     private fun localIPv4Addresses(): List<String> {
@@ -219,6 +250,12 @@ class HostService : Service() {
 
     override fun onDestroy() {
         stopRequested = true
+        synchronized(pythonLock) {
+            try {
+                if (Python.isStarted()) Python.getInstance().getModule("android_host").callAttr("stop_host")
+            } catch (_: Exception) {
+            }
+        }
         releaseWakeLock()
         super.onDestroy()
     }
