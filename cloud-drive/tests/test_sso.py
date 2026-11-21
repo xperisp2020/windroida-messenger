@@ -2,6 +2,7 @@
 import hashlib
 import os
 import stat
+import subprocess
 import hmac
 import shutil
 import tempfile
@@ -47,6 +48,23 @@ class TestSso(SsoBase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(RuntimeError):
                 create_app(DATA_DIR=tmp, TESTING=True, HOUSEKEEPING=False, SSO_SECRET="weak-sso-secret")
+
+    @unittest.skipUnless(os.name == "nt", "Windows ACL check runs only on Windows")
+    def test_session_secret_windows_acl_is_owner_only(self):
+        from app import _resolve_secret
+        path = Path(self.tmp) / "secret.key"
+        saved = self.app.config["SECRET_KEY"]
+        self.app.config["SECRET_KEY"] = None
+        try:
+            _resolve_secret(self.app)
+        finally:
+            self.app.config["SECRET_KEY"] = saved
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip().lower()
+        acl = subprocess.run(["icacls", str(path)], check=True, capture_output=True, text=True).stdout.lower()
+        self.assertIn(account, acl)
+        self.assertIn("(f)", acl)
+        for principal in ("everyone", "authenticated users", "builtin\\users", "builtin\\administrators"):
+            self.assertNotIn(principal, acl)
 
     @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced the same way on Windows")
     def test_session_secret_is_owner_only_and_existing_permissions_are_repaired(self):
