@@ -26,6 +26,7 @@ class HostActivity : Activity() {
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
     private lateinit var copyAddressButton: Button
+    private lateinit var copyCertificateButton: Button
     private lateinit var copyCredentialsButton: Button
     private lateinit var deleteCredentialsButton: Button
     private lateinit var useNativeButton: Button
@@ -88,6 +89,16 @@ class HostActivity : Activity() {
             else toast("ابتدا میزبانی را شروع کن")
         }
         column.addView(copyAddressButton)
+        copyCertificateButton = button("کپی لینک گواهی TLS برای ویندوز") {
+            val value = firstCertificateUrl()
+            if (value.isNotBlank()) copy(value, "لینک گواهی TLS کپی شد")
+            else toast("ابتدا میزبانی را شروع کن")
+        }
+        column.addView(copyCertificateButton)
+        column.addView(text(
+            "برای مرورگر ویندوز، گواهی TLS را از لینک بالا دریافت و در مخزن گواهی‌های مورد اعتماد نصب کن. برنامه اندروید می‌تواند اثر انگشت گواهی را هنگام اتصال تأیید کند.",
+            12f
+        ))
         column.addView(text("حساب مالک سرور", 18f, true))
         credentials = text("", 14f)
         credentials.textDirection = TextView.TEXT_DIRECTION_LTR
@@ -167,6 +178,7 @@ class HostActivity : Activity() {
         startButton.isEnabled = !enabled
         stopButton.isEnabled = enabled
         copyAddressButton.isEnabled = running && ips.isNotEmpty()
+        copyCertificateButton.isEnabled = running && ips.isNotEmpty()
         copyCredentialsButton.isEnabled = credentialsText.isNotBlank()
         deleteCredentialsButton.isEnabled = credentialsText.isNotBlank()
         useNativeButton.isEnabled = running
@@ -178,6 +190,11 @@ class HostActivity : Activity() {
         val ip = hostPrefs.getString("ips", "").orEmpty().split(",").firstOrNull { it.isNotBlank() }
             ?: return ""
         return "https://$ip:${hostPrefs.getInt("web_port", 8081)}"
+    }
+
+    private fun firstCertificateUrl(): String {
+        val url = firstHostUrl()
+        return if (url.isBlank()) "" else "$url/windroida.crt"
     }
 
     private fun adminCredentials(): String {
