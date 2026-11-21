@@ -934,9 +934,10 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 if generated:
                     try:
                         pf = Path(self.db_path).parent / "admin_password.txt"
-                        pf.write_text("username: %s\npassword: %s\n" % (ADMIN_USER, pw), encoding="utf-8")
-                        try: os.chmod(pf, 0o600)
-                        except Exception: pass
+                        _write_private_bytes(
+                            pf,
+                            ("username: %s\npassword: %s\n" % (ADMIN_USER, pw)).encode("utf-8"),
+                        )
                     except Exception:
                         pass
                     print("\n  ==> Admin account created.  username: %s   password: %s\n      (saved in data/admin_password.txt - change it in Profile -> Change password, then delete the file)\n" % (ADMIN_USER, pw), flush=True)
