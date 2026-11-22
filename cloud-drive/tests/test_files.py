@@ -47,6 +47,7 @@ class FileTests(Base):
 
 
     def test_upload_chunk_and_cancel_are_serialized(self):
+        from app import db as dbm
         c = self.register()
         cancel_client = self.new_client()
         login = cancel_client.post("/api/login", json={"username": "alice", "password": "Str0ng-pass-123"})
