@@ -97,7 +97,7 @@ class MainActivity : Activity() {
         internalOnly = internalLaunch && intent.getBooleanExtra("only", false)
         internalOnce = internalLaunch && intent.getBooleanExtra("once", false)
         // Exported launcher/share intents cannot assert privileged one-off WebView mode.
-        val secureServer = Prefs.server(this).startsWith("https://") && Prefs.pin(this).isNotEmpty()
+        val secureServer = TransportPolicy.allowsPrivilegedFeatures(Prefs.server(this), Prefs.pin(this))
         val forceWeb = intent.getBooleanExtra("forceWeb", false)
         if (Prefs.mode(this) == "native" && secureServer && !forceWeb && (!internalLaunch || (!internalOnly && !internalOnce))) {
             // Preserve the user's current native-mode choice for authenticated notification launches.
