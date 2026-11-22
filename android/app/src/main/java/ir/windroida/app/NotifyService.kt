@@ -30,6 +30,7 @@ class NotifyService : Service() {
         fun start(c: Context) {
             val server = Prefs.server(c)
             if (!TransportPolicy.allowsPrivilegedFeatures(server, Prefs.pin(c))) {
+                Prefs.setToken(c, "")
                 stop(c)
                 return
             }
