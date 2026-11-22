@@ -14,31 +14,56 @@ android {
         versionCode = 15
         versionName = "2.3"
     }
-    // A permanent release key of YOUR own (see README-android.md, "امضای ثابت"): Play Protect distrusts debug-signed apps far more.
-    // The key never lives in the project: it is read from keystore.properties (local build) or WD_* environment variables (GitHub secrets).
+    // Release signing is opt-in and must use the owner's private key.
+    // Never silently fall back to the public Android debug certificate.
     val ksProps = Properties().apply {
         val f = rootProject.file("keystore.properties")
         if (f.exists()) f.inputStream().use { this.load(it) }
     }
     fun ks(name: String, env: String): String? = ksProps.getProperty(name) ?: System.getenv(env)
     val ksFile = ks("storeFile", "WD_KEYSTORE")?.let { rootProject.file(it) }
+    val ksPassword = ks("storePassword", "WD_KS_PASS")
+    val keyAliasValue = ks("keyAlias", "WD_KEY_ALIAS") ?: "windroida"
+    val keyPasswordValue = ks("keyPassword", "WD_KEY_PASS") ?: ksPassword
+    val releaseSigningReady = ksFile?.isFile == true &&
+        !ksPassword.isNullOrBlank() &&
+        !keyAliasValue.isBlank() &&
+        !keyPasswordValue.isNullOrBlank()
+
     signingConfigs {
-        if (ksFile != null && ksFile.exists()) {
+        if (releaseSigningReady) {
             create("release") {
                 storeFile = ksFile
-                storePassword = ks("storePassword", "WD_KS_PASS")
-                keyAlias = ks("keyAlias", "WD_KEY_ALIAS") ?: "windroida"
-                keyPassword = ks("keyPassword", "WD_KEY_PASS") ?: ks("storePassword", "WD_KS_PASS")
+                storePassword = ksPassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
             }
         }
     }
     buildTypes {
         release {
-            isMinifyEnabled = false          // no obfuscation: obfuscated code is itself something scanners distrust
+            isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
+
+    // Fail at packaging time when no owner-controlled release key is configured.
+    // Debug builds and unit tests remain available without release credentials.
+    tasks.configureEach {
+        if (name == "packageRelease" || name == "bundleRelease") {
+            doFirst {
+                if (!releaseSigningReady) {
+                    throw GradleException(
+                        "Release signing is not configured. Supply keystore.properties or WD_KEYSTORE, WD_KS_PASS, WD_KEY_ALIAS and WD_KEY_PASS. Debug signing is never used for release."
+                    )
+                }
+            }
+        }
+    }
+
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
