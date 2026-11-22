@@ -341,6 +341,9 @@ def upload_status(upload_id):
 @login_required
 def upload_chunk(upload_id, idx):
     db = get_db()
+    # Serialize the filesystem write with cancel/complete. The SQLite write lock
+    # is held until after_request commits the chunk metadata.
+    db.execute("BEGIN IMMEDIATE")
     r = _upload_row(db, upload_id, current_user()["id"])
     if idx < 0 or idx >= r["total_chunks"]:
         fail("bad_chunk", "شماره قطعه نامعتبر است", "Invalid chunk index", 400)
@@ -417,6 +420,7 @@ def upload_complete(upload_id):
 @login_required
 def upload_cancel(upload_id):
     db = get_db()
+    db.execute("BEGIN IMMEDIATE")
     _upload_row(db, upload_id, current_user()["id"])
     db.execute("DELETE FROM uploads WHERE id=?", (upload_id,))
     current_app.storage.drop_upload(upload_id)
