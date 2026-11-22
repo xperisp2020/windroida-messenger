@@ -261,7 +261,9 @@ class MainActivity : Activity() {
             Prefs.setToken(this, "")
             Toast.makeText(this, "اتصال HTTP رمزگذاری نشده است؛ امکانات بومی، فایل، دوربین، میکروفون و اعلان‌ها غیرفعال‌اند. برای امنیت از HTTPS استفاده کنید.", Toast.LENGTH_LONG).show()
         }
-        if (Prefs.server(this).isEmpty()) askServer() else {
+        if (Prefs.server(this).isEmpty()) askServer()
+        else if (!isSecureTransport()) confirmHttpAndLoad(Prefs.server(this))
+        else {
             val hash = if (internalLaunch) intent.getStringExtra("hash") else null
             web.loadUrl(withBridgeNonce(Prefs.server(this) + (hash?.let { "#" + it } ?: "")))
         }
@@ -271,7 +273,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         val nonce = InternalWebLaunch.consume(this, i)
-        if (nonce != null && Prefs.mode(this) == "native" &&
+        if (nonce != null && Prefs.mode(this) == "native" && isSecureTransport() &&
             !i.getBooleanExtra("once", false) && !i.getBooleanExtra("only", false)) {
             startActivity(Intent(this, NativeActivity::class.java).putExtra("chat", i.getIntExtra("chat", 0)))
             finish()
@@ -293,7 +295,7 @@ class MainActivity : Activity() {
             val chat = i.getIntExtra("chat", 0)
             if (chat != 0) pendingChat = chat
         }
-        handleShare(i)
+        if (isSecureTransport()) handleShare(i)
         // Notification taps in the regular WebView mode carry only a chat id; preserve that navigation
         // without treating any external intent extras as an authenticated one-off launch.
         if (nonce == null) {
@@ -303,7 +305,7 @@ class MainActivity : Activity() {
     }
 
     private fun isSecureTransport(): Boolean =
-        Prefs.server(this).startsWith("https://", ignoreCase = true)
+        Prefs.server(this).startsWith("https://", ignoreCase = true) && Prefs.pin(this).isNotEmpty()
 
     private fun configureNativeBridge() {
         if (isSecureTransport()) web.addJavascriptInterface(Bridge(), "WD")
@@ -386,7 +388,7 @@ class MainActivity : Activity() {
     }
 
     private fun saveServerAddress(v: String) {
-                    if (v != Prefs.server(this)) {
+        if (v != Prefs.server(this)) {
                         Prefs.setPin(this, ""); Prefs.setToken(this, ""); NotifyService.stop(this); MediaCache.clearAll()
                         getSharedPreferences("wd", MODE_PRIVATE).edit().remove("drive_port").remove("ghab_port").apply()
                     }
@@ -396,14 +398,29 @@ class MainActivity : Activity() {
                         NotifyService.stop(this)
                         Prefs.setToken(this, "")
                     }
-                    web.clearCache(true)
-                    web.loadUrl(withBridgeNonce(v))
+        web.clearCache(true)
+        if (isSecureTransport()) web.loadUrl(withBridgeNonce(v))
+        else confirmHttpAndLoad(v)
+    }
+
+    private fun confirmHttpAndLoad(v: String) {
+        AlertDialog.Builder(this).setTitle("اتصال HTTP ناامن است")
+            .setMessage("این اتصال رمزگذاری نشده است و ممکن است رمز عبور، پیام‌ها و فایل‌ها شنود یا دست‌کاری شوند. امکانات بومی، اعلان پس‌زمینه، پل JavaScript، انتخاب فایل، دوربین، میکروفون و دانلود بومی غیرفعال می‌مانند. فقط در شبکه مورد اعتماد ادامه دهید.")
+            .setCancelable(false)
+            .setNegativeButton("تغییر آدرس") { _, _ -> askServer(true) }
+            .setPositiveButton("ادامه با محدودیت") { _, _ -> web.loadUrl(withBridgeNonce(v)) }
+            .show()
     }
 
     private fun askTrust(fp: String, h: SslErrorHandler) {
         AlertDialog.Builder(this).setTitle("تأیید گواهی سرور").setCancelable(false)
             .setMessage("اثر انگشت (SHA-256) گواهی این سرور:\n\n$fp\n\nفقط اگه دقیقاً با اثری که تو پنجره سرور (start.bat) نوشته شده یکیه، اعتماد کن.")
-            .setPositiveButton("اعتماد می‌کنم") { _, _ -> Prefs.setPin(this, fp); h.proceed(); NotifyService.start(this) }
+            .setPositiveButton("اعتماد می‌کنم") { _, _ ->
+                Prefs.setPin(this, fp)
+                configureNativeBridge()
+                h.proceed()
+                NotifyService.start(this)
+            }
             .setNegativeButton("لغو") { _, _ -> h.cancel() }.show()
     }
 
