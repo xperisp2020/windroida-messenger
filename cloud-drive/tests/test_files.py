@@ -243,6 +243,31 @@ class FileTests(Base):
         self.assertEqual(cleanup_stale_uploads(conn, self.app.storage, 24), 1)
         self.assertEqual(self.app.storage.list_upload_dirs(), [])
 
+    def test_housekeeping_preserves_recent_orphan_claimed_for_assembly(self):
+        import os
+        import time
+        from app import db as dbm
+        from app.fileops import cleanup_stale_uploads
+        c = self.register()
+        uid = self.call(c, "post", "/api/uploads", json={"name": "assembling.bin", "size": 1024}).get_json()["upload_id"]
+        self.call(c, "put", "/api/uploads/%s/chunks/0" % uid, data=b"x" * 1024)
+        # Simulate /complete having atomically claimed the upload row, while its
+        # staging directory is still being assembled outside the SQLite transaction.
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        conn.execute("DELETE FROM uploads WHERE id=?", (uid,))
+        conn.commit()
+        staged = self.app.storage._upload_dir(uid)
+        self.assertTrue(staged.is_dir())
+        self.assertEqual(cleanup_stale_uploads(conn, self.app.storage, 24), 0)
+        self.assertTrue(staged.is_dir(), "housekeeping must not remove a fresh directory owned by /complete")
+        # Once the unreferenced directory is older than the stale-upload window,
+        # the next pass may safely reclaim it (e.g. after a crashed completion).
+        old = time.time() - 25 * 3600
+        os.utime(staged, (old, old))
+        self.assertEqual(cleanup_stale_uploads(conn, self.app.storage, 24), 0)
+        self.assertFalse(staged.exists())
+        conn.close()
+
 
 class RetentionTests(Base):
     def test_no_upload_limit_by_default(self):
