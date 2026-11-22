@@ -172,3 +172,10 @@ class TrustedProxyAddressTests(Base):
             self._resolved_ip("127.0.0.1", ", ".join(["10.0.0.1"] * 33), cidrs=["127.0.0.1/32", "10.0.0.0/8"]),
             "127.0.0.1",
         )
+
+    def test_security_headers_block_all_frames(self):
+        response = self.new_client().get("/")
+        csp = response.headers.get("Content-Security-Policy", "")
+        self.assertIn("frame-src 'none'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
