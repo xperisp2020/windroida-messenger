@@ -55,6 +55,7 @@ class MainActivity : Activity() {
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var pendingPerm: PermissionRequest? = null
     private var pendingPermResources: Array<String> = emptyArray()
+    private var pendingPermOrigin: String? = null
     private var pendingChat = 0
     private var pageReady = false
     @Volatile private var bridgeNonce = ""
@@ -137,6 +138,8 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             // Defense in depth: redirects must not land a foreign document inside a WebView with a native bridge.
             override fun onPageStarted(v: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                // A permission prompt belongs to the document that requested it; never carry it across navigation.
+                cancelPendingWebPermission()
                 if (!TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), url)) {
                     v.stopLoading()
                     return
@@ -228,6 +231,11 @@ class MainActivity : Activity() {
 
         web.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(r: PermissionRequest) { runOnUiThread { if (isSecureTransport()) handlePermission(r) else r.deny() } }
+            override fun onPermissionRequestCanceled(r: PermissionRequest) {
+                runOnUiThread {
+                    if (pendingPerm === r) cancelPendingWebPermission()
+                }
+            }
             override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, p: WebChromeClient.FileChooserParams): Boolean {
                 if (!isSecureTransport()) { cb.onReceiveValue(null); return false }
                 fileCb?.onReceiveValue(null)
@@ -352,6 +360,9 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         try { netCb?.let { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) } } catch (_: Exception) {}
         ui.removeCallbacksAndMessages(null)
+        cancelPendingWebPermission()
+        fileCb?.onReceiveValue(null)
+        fileCb = null
         super.onDestroy()
     }
 
@@ -425,8 +436,17 @@ class MainActivity : Activity() {
             .setNegativeButton("لغو") { _, _ -> h.cancel() }.show()
     }
 
+    private fun cancelPendingWebPermission() {
+        val request = pendingPerm
+        pendingPerm = null
+        pendingPermResources = emptyArray()
+        pendingPermOrigin = null
+        try { request?.deny() } catch (_: Exception) {}
+    }
+
     private fun handlePermission(r: PermissionRequest) {
-        if (!isSecureTransport() || !TrustedOrigin.sameOrigin(Prefs.server(this), r.origin.toString())) { r.deny(); return }
+        val requestOrigin = r.origin.toString()
+        if (!isSecureTransport() || !TrustedOrigin.sameOrigin(Prefs.server(this), requestOrigin)) { r.deny(); return }
         // Never grant unknown WebView permission resources just because they need no Android runtime permission.
         val allowed = WebPermissionPolicy.allowedResources(
             r.resources, PermissionRequest.RESOURCE_AUDIO_CAPTURE, PermissionRequest.RESOURCE_VIDEO_CAPTURE
@@ -438,21 +458,40 @@ class MainActivity : Activity() {
         val missing = need.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) r.grant(allowed)
         else {
-            pendingPerm?.deny()
+            cancelPendingWebPermission()
             pendingPerm = r
             pendingPermResources = allowed
-            requestPermissions(missing.toTypedArray(), 78)
+            pendingPermOrigin = requestOrigin
+            try { requestPermissions(missing.toTypedArray(), 78) }
+            catch (_: Exception) { cancelPendingWebPermission() }
         }
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(code, perms, res)
         if (code == 78) {
-            val p = pendingPerm
+            val request = pendingPerm
             val allowed = pendingPermResources
+            val requestOrigin = pendingPermOrigin
             pendingPerm = null
             pendingPermResources = emptyArray()
-            if (p != null) { if (res.isNotEmpty() && res.all { it == PackageManager.PERMISSION_GRANTED }) p.grant(allowed) else p.deny() }
+            pendingPermOrigin = null
+            if (request != null) {
+                val need = ArrayList<String>()
+                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in allowed) need.add(Manifest.permission.RECORD_AUDIO)
+                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in allowed) need.add(Manifest.permission.CAMERA)
+                val runtimeGranted = need.isNotEmpty() && need.all {
+                    checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+                }
+                val mayGrant = WebPermissionPolicy.canGrantPending(
+                    isSecureTransport(),
+                    requestOrigin != null && TrustedOrigin.sameOrigin(Prefs.server(this), requestOrigin),
+                    !isFinishing && !isDestroyed && TrustedOrigin.sameOrigin(Prefs.server(this), web.url ?: ""),
+                    runtimeGranted
+                )
+                try { if (mayGrant) request.grant(allowed) else request.deny() }
+                catch (_: Exception) { /* WebView may have canceled the request already. */ }
+            }
         }
     }
 
