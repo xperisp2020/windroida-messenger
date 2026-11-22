@@ -279,7 +279,7 @@ class MainActivity : Activity() {
             finish()
             return
         }
-        if (nonce == null && Prefs.mode(this) == "native" && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
+        if (nonce == null && Prefs.mode(this) == "native" && isSecureTransport() && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
             val go = Intent(this, NativeActivity::class.java).setAction(i.action).setType(i.type); i.extras?.let { go.putExtras(it) }; go.clipData = i.clipData; go.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(go); return
         }
@@ -399,7 +399,7 @@ class MainActivity : Activity() {
                         Prefs.setToken(this, "")
                     }
         web.clearCache(true)
-        if (isSecureTransport()) web.loadUrl(withBridgeNonce(v))
+        if (v.startsWith("https://", ignoreCase = true)) web.loadUrl(withBridgeNonce(v))
         else confirmHttpAndLoad(v)
     }
 
