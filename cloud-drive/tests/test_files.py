@@ -111,6 +111,28 @@ class FileTests(Base):
             conn.close()
         self.assertNotIn(uid, self.app.storage.list_upload_dirs())
 
+
+    def test_upload_write_lock_handles_stale_session_touch(self):
+        from app import db as dbm
+        c = self.register()
+        uid = self.call(c, "post", "/api/uploads", json={"name": "stale.bin", "size": 1024}).get_json()["upload_id"]
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        conn.execute("UPDATE sessions SET last_seen='2000-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+
+        chunk = self.call(c, "put", "/api/uploads/%s/chunks/0" % uid,
+                          data=b"x" * 1024, content_type="application/octet-stream")
+        self.assertEqual(chunk.status_code, 200, chunk.get_json())
+
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        conn.execute("UPDATE sessions SET last_seen='2000-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+        cancelled = self.call(c, "delete", "/api/uploads/" + uid)
+        self.assertEqual(cancelled.status_code, 200, cancelled.get_json())
+        self.assertNotIn(uid, self.app.storage.list_upload_dirs())
+
     def test_wrong_chunk_size_rejected(self):
         c = self.register()
         uid = self.call(c, "post", "/api/uploads", json={"name": "a", "size": 2048}).get_json()["upload_id"]
