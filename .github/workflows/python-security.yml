@@ -34,6 +34,8 @@ jobs:
           node --check ghab/web/static/app.js
           node --check cloud-drive/app/static/js/common.js
           node tests/test_webview_bridge.js
+      - name: Run Android private-data backup policy tests
+        run: python test_android_backup_policy.py
       - name: Run private-key permission tests
         run: python -m unittest -v test_private_key_permissions.py
       - name: Run Ghab security tests
