@@ -168,3 +168,44 @@
   4. RateLimiter در `cloud-drive/app/security.py` حافظه‌ای و process-local است؛ README اجرای Waitress تک‌process را توصیه می‌کند، اما پشتیبانی multi-worker باید صریحاً محدود/مستند شود یا backend مشترک اضافه شود.
   5. ممیزی SSO، share token و دیگر raceهای فایل ادامه یابد.
 - گام بعدی: ابتدا CI روی head نهایی را کامل کن؛ سپس اصلاح HTTP/WebView را با تست‌های قابل اجرا و حفظ سازگاری بررسی کن. `main` و ادغام PRها بدون اجازه دست‌نخورده بمانند.
+
+
+## 2026-11-22 — چرخه پنجم: محدودسازی WebView و قابلیت‌های Android به HTTPS پین‌شده
+- شاخه: `fix/security-test-integrity`
+- SHA نهایی کد و مستندات این چرخه: `b2bce39ae46bc557d0f0be2ed5b2602ff5991e5e`
+- محدوده: `AndroidManifest.xml`، `MainActivity.kt`، `NativeActivity.kt`، `NotifyService.kt`، `SiteActivity.kt`، سیاست transport، مجوزهای WebView و مستندات Android.
+- یافته‌های تأییدشده:
+  1. `usesCleartextTraffic=true` برای self-hosted HTTP لازم بود، اما پل `addJavascriptInterface("WD")` و چند قابلیت native روی HTTP هم در دسترس بودند. در چنین وضعی مهاجم MITM می‌توانست JavaScript/HTML را دست‌کاری کند و در صورت دستیابی به nonce به پل native دسترسی بگیرد؛ credentialهای سرویس اعلان نیز از مسیر HTTP قابل افشا بودند.
+  2. `handlePermission()` منابع مجوز ناشناخته WebView را هم در صورت خالی بودن فهرست مجوزهای Android runtime تأیید می‌کرد؛ این رفتار fail-open بود.
+  3. Cloud Drive/Ghab درون‌برنامه‌ای و NativeActivity نیز باید مستقل از مسیر اصلی WebView، TLS را الزام کنند.
+- اصلاحات:
+  - `TransportPolicy.kt`: سیاست مشترک `allowsPrivilegedFeatures(server, pin)` اضافه شد؛ فقط HTTPS با اثر انگشت گواهی ثبت‌شده مجاز است.
+  - `MainActivity.kt`: پل JavaScript فقط روی transport مجاز اضافه می‌شود و روی HTTP حذف می‌شود؛ در HTTP اعلان، share-to-app، file chooser، دوربین/میکروفون، دانلود/پخش native و cache/share interception غیرفعال‌اند؛ توکن ذخیره‌شده native پاک می‌شود؛ قبل از استفاده HTTP هشدار صریح نمایش داده می‌شود و صفحه فقط در حالت وب محدود باز می‌شود. مسیر تغییر سرور و اولین تأیید گواهی نیز بازبینی شد تا HTTPS با pin تازه، پس از تأیید گواهی، پل را فعال کند.
+  - `NativeActivity.kt`: Native API و WebSocket فقط با HTTPS و pin معتبر اجرا می‌شوند؛ در غیر این صورت به WebView محدودشده برمی‌گردد.
+  - `NotifyService.kt`: شروع سرویس و loop اعلان هر دو HTTPS و pin را الزام می‌کنند؛ در صورت تغییر transport به حالت ناامن، سرویس متوقف و توکن native پاک می‌شود.
+  - `SiteActivity.kt`: Cloud Drive/Ghab درون‌برنامه‌ای فقط با HTTPS و pin تأییدشده باز می‌شوند.
+  - `WebPermissionPolicy.kt` و `MainActivity.kt`: allowlist بسته برای audio/video capture؛ هر resource ناشناخته یا درخواست خالی رد می‌شود و فقط resourceهای شناخته‌شده grant می‌شوند.
+  - `TransportPolicyTest.kt` و `WebPermissionPolicyTest.kt`: تست واحد برای HTTPS+pin، HTTP، pin خالی/Null و رد permission resource ناشناخته/خالی.
+  - `AndroidManifest.xml`: مجوز cleartext حفظ شد چون HTTP انتخابی کاربر هنوز برای سازگاری وب پشتیبانی می‌شود؛ توضیح XML به محل معتبر منتقل شد. این مجوز به معنی امن بودن HTTP نیست.
+  - `android/README-android.md`: رفتار و محدودیت HTTP و الزام HTTPS برای قابلیت‌های privileged مستند شد.
+- خطای کشف‌شده در CI و اصلاح:
+  - اجرای Android روی SHA `ed04accabfc4b419681c2e6ad294375f3345dda4` در `processDebugMainManifest` شکست خورد؛ علت قرار گرفتن XML comment بین attributeهای تگ `application` بود.
+  - comment به قبل از تگ `application` منتقل شد؛ SHA اصلاح Manifest: `b2bce39ae46bc557d0f0be2ed5b2602ff5991e5e`.
+- نتایج CI روی head اصلاح‌شده:
+  - Android workflow `44999107914`: موفق؛ `testDebugUnitTest` موفق، Release بدون private key عمداً و با پیام مورد انتظار fail شد (guard موفق)، `assembleDebug` موفق و artifact upload موفق.
+  - Python security workflow `44999107924`: موفق؛ JavaScript bridge syntax، Android backup policy، private-key permissions، Ghab، Cloud Drive، Messenger و Gateway موفق.
+  - Windows ACL job در همان workflow: موفق؛ owner-only ACL و Cloud Drive session-secret ACL موفق.
+  - توجه: چون secrets کلید اختصاصی در این run موجود نبودند، Release واقعی امضاشده ساخته نشد؛ این run فقط اثبات کرد بدون کلید، Release fail-closed است و Debug ساخته می‌شود.
+- بازبینی پس از اصلاح:
+  - Manifest مجدداً از GitHub خوانده شد و XML comment در محل معتبر قرار دارد.
+  - فایل‌های MainActivity، NativeActivity، NotifyService، SiteActivity، TransportPolicy و تست‌ها دوباره خوانده شدند.
+  - unit tests و تمام مراحل Android workflow روی merge ref نهایی سبز شدند؛ CI Python/Windows نیز سبز شد.
+- محدودیت باقی‌مانده:
+  - `usesCleartextTraffic=true` هنوز مجوز سراسری cleartext در سطح اپ است تا self-hosted HTTP قابل انتخاب باشد؛ در کد native مسیرهای دارای credential/قابلیت privileged به HTTPS پین‌شده محدود شده‌اند، اما خود نسخه وب HTTP همچنان در برابر شنود و دست‌کاری آسیب‌پذیر است. فقط در شبکه مورد اعتماد و با پذیرش خطر استفاده شود؛ توصیه عملی HTTPS است.
+  - این اصلاحات روی emulator یا دستگاه فیزیکی اجرا نشده‌اند؛ CI/Unit tests جایگزین تست واقعی دوربین، میکروفون، file chooser، download و lifecycle نیستند.
+  - Release امضاشده با keystore واقعی در این run آزمایش نشده است.
+- ایرادات باز / گام بعدی:
+  1. ممیزی کامل Android bridge و iframeها، intent/deep-link، exported components، storage/cookies، redirect و permission lifecycle ادامه یابد.
+  2. rate limiter process-local و پشتیبانی multi-worker در Cloud Drive تعیین تکلیف شود.
+  3. SSO/share token و upload/download raceها و atomicity بیشتر بررسی شوند.
+  4. پس از پایان هر تغییر، PRهای وابسته #2/#3/#4 از نظر base/head و CI مجدداً بررسی شوند؛ main و merge همچنان دست‌نخورده بمانند.
