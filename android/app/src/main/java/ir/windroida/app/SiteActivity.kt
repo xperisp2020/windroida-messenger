@@ -78,11 +78,14 @@ class SiteActivity : Activity() {
         super.onCreate(savedInstanceState)
         val rawUrl = intent.getStringExtra("url") ?: ""
         if (rawUrl.isEmpty() || !sameHost(rawUrl)) { Toast.makeText(this, "این آدرس مجاز نیست", Toast.LENGTH_SHORT).show(); finish(); return }
+        if (!Prefs.server(this).startsWith("https://", ignoreCase = true) ||
+            !rawUrl.startsWith("https://", ignoreCase = true) || Prefs.pin(this).isEmpty()) {
+            Toast.makeText(this, "Cloud Drive و قاب درون‌برنامه‌ای فقط با HTTPS و گواهی تأییدشده فعال‌اند.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
         origin = originOf(rawUrl) ?: ""
         val url = withBridgeNonce(rawUrl)
-        if (url.startsWith("https://") && Prefs.pin(this).isEmpty()) {
-            Toast.makeText(this, "اول تو صفحهٔ اصلی برنامه گواهی سرور رو تأیید کن", Toast.LENGTH_LONG).show(); finish(); return
-        }
         web = WebView(this)
         setContentView(web)
         val s = web.settings
