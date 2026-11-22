@@ -88,3 +88,25 @@
 - بازبینی اولیه پس از تغییر: متن فایل Gradle مجدداً خوانده شد و دیگر fallback به debug در release وجود ندارد. CI باید guard و build debug را اجرا کند.
 - ایرادات باز: release signing با keystore واقعی در CI آزمایش نشده؛ دستگاه فیزیکی تست نشده؛ بررسی عمیق‌تر Android component/deep-link و Python backend ادامه دارد.
 - گام بعدی: دریافت نتیجهٔ CI روی آخرین head، رفع هر خطای Gradle/Workflow، سپس بررسی امنیت notification/logging و مسیرهای upload/share با تست بازتولیدکننده.
+
+
+## 2026-11-22 — چرخه دوم: جلوگیری از Backup ناخواسته داده‌های خصوصی Android
+- SHA پایه: cc387538a60649ed2322272f80b67c706084f207
+- محدوده بررسی: AndroidManifest، backup_rules، data_extraction_rules، معماری ذخیره‌سازی Host Android و workflow امنیتی.
+- یافته با شدت بالا: برنامه Android در Manifest مقدار allowBackup=true داشت. قواعد قبلی فقط چند SharedPreferences و WebView را exclude می‌کردند؛ دیتابیس پیام‌رسان و فایل‌ها/ضمائم در دامنه‌های database و file مستثنی نشده بودند. بنابراین داده‌های خصوصی برنامه می‌توانستند وارد backup/انتقال دستگاه شوند.
+- تغییرات:
+  - android/app/src/main/AndroidManifest.xml: allowBackup=false.
+  - android/app/src/main/res/xml/backup_rules.xml: استثنای کامل database، file و sharedpref اضافه شد؛ WebView هم همچنان مستثنی است.
+  - android/app/src/main/res/xml/data_extraction_rules.xml: همین استثناها جداگانه برای cloud-backup و device-transfer اضافه شد.
+  - test_android_backup_policy.py: سه regression test برای Manifest، full backup و cloud/device transfer اضافه شد.
+  - .github/workflows/python-security.yml: اجرای تست سیاست backup به workflow امنیتی اضافه شد.
+- بازبینی پس از تغییر: هر چهار فایل از شاخه مجدداً خوانده شدند؛ allowBackup=false و excludeهای database/file/sharedpref در هر دو مسیر backup و انتقال تأیید شدند. اسکریپت تست نیز از مخزن خوانده شد.
+- وضعیت CI: اجرای workflowها روی commitهای میانی به علت pushهای پیاپی و concurrency/cancel-in-progress لغو شد؛ این موارد نتیجه تست محسوب نمی‌شوند. هنوز هیچ ادعای موفقیت برای تست‌های جدید ثبت نشده است. اجرای نهایی باید پس از آخرین commit بررسی شود.
+- ایرادات باز: تست نهایی Gradle assembleDebug و fail-closed assembleRelease، اجرای test_android_backup_policy.py، Python/Ghab/Cloud Drive/Messenger/Gateway و Windows ACL روی آخرین SHA؛ بررسی کامل Android intent/deep link و privacy logging؛ ممیزی upload/share.
+- نکته محصول: غیرفعال‌کردن backup به معنی عدم امکان بازیابی داده‌های برنامه از backup معمول سیستم‌عامل است؛ این انتخاب برای جلوگیری از کپی ناخواسته دیتابیس و فایل‌های خصوصی انجام شد.
+- گام بعدی: پس از ثبت این log، فقط آخرین workflowهای head را تا نتیجه نهایی دنبال کن؛ هر fail را از log دقیق استخراج و اصلاح کن، سپس چرخه را تکرار کن.
+
+## خلاصه وضعیت کنونی و قفل‌های انتشار
+- شاخه کاری: fix/security-test-integrity؛ PR #1 به main باز است و نباید merge شود تا بررسی و CI کامل شوند.
+- اصلاح release signing و سیاست backup هر دو در همین شاخه هستند؛ شاخه‌های PR #2/#3/#4 همچنان وابسته به همین شاخه پایه‌اند.
+- در پایان هر نوبت، edame را با SHA نهایی و وضعیت واقعی تست‌ها به‌روزرسانی کن.
