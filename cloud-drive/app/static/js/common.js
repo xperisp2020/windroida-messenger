@@ -1,4 +1,5 @@
-/* SiteActivity injects WD into every frame; require the private top-level fragment nonce before exposing native downloads. */
+/* Legacy SiteActivity bridge bootstrap. The document CSP denies child frames and WebViewClient rejects subframe navigation;
+   this nonce is only a per-load freshness check, not proof of main-frame identity. */
 (()=>{
   const raw=window.WD;if(!raw)return;
   const parts=location.hash.slice(1).split('&').filter(Boolean);
