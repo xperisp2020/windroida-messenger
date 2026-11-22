@@ -12,6 +12,7 @@ PYTHON_DIR = REPO_ROOT / "android" / "app" / "src" / "main" / "python"
 
 CHILD_TEST = r"""
 import json
+import os
 import socket
 import ssl
 import sys
@@ -50,9 +51,11 @@ web_port = free_port()
 while web_port == tcp_port:
     web_port = free_port()
 
+os.environ["WINDROIDA_CERT_NAMES"] = "stale.example.invalid"
 result = json.loads(android_host.start_host(
-    str(root_dir), "127.0.0.1", tcp_port, web_port
+    str(root_dir), "", tcp_port, web_port
 ))
+assert "WINDROIDA_CERT_NAMES" not in os.environ
 assert result["running"] and result["tls"]
 assert result["tcp_port"] == tcp_port
 assert result["web_port"] == web_port
