@@ -169,13 +169,15 @@ def create_app(**overrides):
         if resp.status_code < 500:
             dbm.commit_db()
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        # The Android WebView exposes a privileged bridge; nested frames must not inherit it.
+        # Same-origin frames share origin storage, so disallow them rather than relying on a page nonce.
+        resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
         resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         resp.headers.setdefault("Content-Security-Policy",
                                 "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-                                "frame-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'; "
-                                "frame-ancestors 'self'")
+                                "frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; "
+                                "frame-ancestors 'none'")
         if app.config["COOKIE_SECURE"] and app.config.get("HSTS", True):
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         if request.path.startswith("/api/") and "Cache-Control" not in resp.headers:
