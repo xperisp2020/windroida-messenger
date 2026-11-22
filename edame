@@ -295,3 +295,25 @@
 - محدودیت تست: هیچ دستگاه فیزیکی یا emulator برای بررسی دستی PDF preview، دانلود، SSO، frame injection یا رفتار نسخه‌های مختلف WebView در این چرخه در دسترس نبود.
 - PR #1 باز و ادغام‌نشده و head آن با commit فوق همگام است؛ `main` تغییر نکرده و هیچ PR ادغام نشده است.
 - گام بعدی: طراحی و پیاده‌سازی پل async مبتنی بر WebMessageListener با تست instrumentation برای same-origin iframe، `srcdoc`، `about:blank`، redirect و navigation race؛ سپس ممیزی SSO/share replay و ظرفیت میزبان در PRهای وابسته.
+
+
+## 2026-11-22 — چرخه دهم: محدودسازی رابط شبکه میزبان Android و ممیزی ظرفیت
+- PR #4 branch: `feature/android-phone-host`؛ head بررسی‌شده: `be88e53d687d0dd083e9f026908bf20ab0038051`.
+- یافته امنیتی: runtime آزمایشی Android پیش‌تر TCP و HTTPS را روی `0.0.0.0` bind می‌کرد؛ این یعنی تمام رابط‌های IPv4 از جمله رابط موبایل/VPN، نه فقط LAN، listener را می‌دیدند.
+- اصلاحات PR #4:
+  - Python runtime اکنون فقط اولین IPv4 خصوصی معتبر را برای bind انتخاب می‌کند؛ در نبود آدرس معتبر فقط روی `127.0.0.1` گوش می‌دهد.
+  - گواهی فقط SANهای IPv4 خصوصی/loopback معتبر را از لیست ورودی می‌پذیرد و مقدار stale متغیر `WINDROIDA_CERT_NAMES` هنگام نبود آدرس پاک می‌شود.
+  - HostService فقط رابط‌های Wi-Fi/Wi-Fi Direct/Ethernet شناخته‌شده را برای کشف IP در نظر می‌گیرد؛ رابط‌های cellular، VPN، loopback و unknown رد می‌شوند. فقط آدرس انتخاب‌شده در UI نمایش داده می‌شود.
+  - HostActivity برای اتصال همین گوشی به میزبان، از همان آدرس bind‌شده استفاده می‌کند؛ در نبود LAN به loopback برمی‌گردد.
+  - تست Kotlin برای allowlist نام رابط‌ها و تست Python برای انتخاب private IP، رد public IP، fallback loopback، پاک‌سازی SAN stale و bind واقعی اضافه شد.
+  - workflowهای branch-specific به `feature/android-phone-host` اضافه شدند تا CI روی PRی که base آن شاخه امنیتی است نیز قابل اجرا باشد.
+- بررسی PR #3 (ظرفیت میزبان): `host_capacity.py` محدودیت ثبت‌نام را داخل `BEGIN IMMEDIATE` و lock مشترک با login اعمال می‌کند؛ `capacity_lock` ترتیب ورود/ثبت‌نام و تغییر تنظیمات را serialize می‌کند؛ نشست دوم همان کاربر slot آنلاین جدا نمی‌گیرد؛ شمارش online بر اساس کاربر یکتا و connection زنده است. ترتیب lock بررسی‌شده وارونگی آشکار ندارد. محدودیت online همچنان process-local است و برای multi-process/multi-replica backend مشترک لازم دارد. تست‌های integration ظرفیت و TLS shutdown در CI جدید اجرا شدند.
+- CI PR #4 روی head `be88e53...`:
+  - Python workflow `45007270057`: **success**؛ syntax/runtime Android host، تست path/start/stop، کلیدها، Ghab، Cloud Drive، host capacity، TLS shutdown، Messenger/Gateway و Windows ACLها همگی موفق.
+  - Android workflow `45007270067`: در آخرین بررسی هنوز در مرحله `testDebugUnitTest` در حال اجرا بود؛ هیچ نتیجه نهایی برای build/guard/APK ادعا نمی‌شود.
+  - Emulator integration test فقط با `workflow_dispatch` اجرا می‌شود و هنوز اجرا نشده؛ تست دستگاه فیزیکی نیز وجود ندارد.
+- ایرادهای باز:
+  - race شروع/توقف/شروع سریع در HostService هنوز تست و رفع نشده است.
+  - اتصال بعد از تغییر IP شبکه ممکن است نیازمند توقف/شروع مجدد سرویس باشد.
+  - PR #4 همچنان از نظر ancestry با base شاخه امنیتی diverged و mergeable=false است؛ rebase/merge انجام نشد.
+- وضعیت اصلی: PR #1 باز و ادغام‌نشده است؛ `main` دست‌نخورده مانده است.
