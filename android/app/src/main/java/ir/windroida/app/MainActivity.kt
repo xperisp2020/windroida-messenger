@@ -180,12 +180,13 @@ class MainActivity : Activity() {
                     }
                     return true
                 }
+                // The native JavaScript interface is privileged. Never allow a nested frame to navigate,
+                // even to the configured origin; CSP frame-src 'none' is enforced by the server as well.
+                if (!r.isForMainFrame) return true
                 if (TrustedOrigin.sameOrigin(Prefs.server(this@MainActivity), u)) {
                     if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
                     return false
                 }
-                // Never launch external pages from an iframe. The native bridge is exposed to every WebView frame.
-                if (!r.isForMainFrame) return true
                 try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
                 return true
             }
