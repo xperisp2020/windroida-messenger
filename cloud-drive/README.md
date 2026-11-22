@@ -32,7 +32,7 @@
 - ⚠️ با Port Forward سرویس عمومی می‌شود. قبلش: HTTPS (بخش ۵)، رمزهای قوی، `CD_COOKIE_SECURE=1`، بستن ثبت‌نام عمومی در تنظیمات پنل ادمین اگر لازم نیست، به‌روز نگه‌داشتن Python/بسته‌ها. Debug هرگز فعال نیست.
 
 ## ۵) HTTPS (Reverse Proxy)
-نمونه‌ها در `deploy/Caddyfile` (گواهی خودکار) و `deploy/nginx.conf`. سپس در `.env`: `CD_COOKIE_SECURE=1` و `CD_TRUSTED_PROXY=1` (فقط پشت پراکسی خودتان). پراکسی روی 443 گوش می‌دهد و به 8082 داخلی می‌فرستد.
+نمونه‌ها در `deploy/Caddyfile` (گواهی خودکار) و `deploy/nginx.conf`. سپس در `.env`، `CD_COOKIE_SECURE=1` و `CD_TRUSTED_PROXY=1` را همراه با `CD_TRUSTED_PROXY_CIDRS=127.0.0.1/32` (یا CIDR دقیق IP پراکسی واقعی) تنظیم کنید. بدون CIDR صریح، هدر `X-Forwarded-For` نادیده گرفته می‌شود. پورت برنامه را از اینترنت مستقیم در دسترس نگذارید؛ فقط پراکسی مورد اعتماد باید به آن متصل شود. پراکسی روی 443 گوش می‌دهد و به 8082 داخلی می‌فرستد.
 
 ## ۶) پشتیبان‌گیری و بازیابی
 - `python manage.py backup` ← `backups/backup-<زمان>.zip` (دیتابیس با کپی سازگار SQLite + فایل‌ها + کلید).
