@@ -305,7 +305,7 @@ class MainActivity : Activity() {
     }
 
     private fun isSecureTransport(): Boolean =
-        Prefs.server(this).startsWith("https://", ignoreCase = true) && Prefs.pin(this).isNotEmpty()
+        TransportPolicy.allowsPrivilegedFeatures(Prefs.server(this), Prefs.pin(this))
 
     private fun configureNativeBridge() {
         if (isSecureTransport()) web.addJavascriptInterface(Bridge(), "WD")
