@@ -11,10 +11,16 @@ class FileTests(Base):
         f = self.upload(c, "photo.bin", data)
         self.assertEqual(f["size"], 5000)
         r = c.get("/api/files/%d/download" % f["id"])
-        self.assertEqual(r.data, data)
-        self.assertIn("attachment", r.headers["Content-Disposition"])
+        try:
+            self.assertEqual(r.data, data)
+            self.assertIn("attachment", r.headers["Content-Disposition"])
+        finally:
+            r.close()
         r = c.get("/api/files/%d/download" % f["id"], headers={"Range": "bytes=10-19"})
-        self.assertEqual((r.status_code, r.data), (206, data[10:20]))
+        try:
+            self.assertEqual((r.status_code, r.data), (206, data[10:20]))
+        finally:
+            r.close()
 
     def test_stored_name_random_and_on_disk(self):
         c = self.register()
@@ -43,7 +49,11 @@ class FileTests(Base):
             self.call(c, "put", "/api/uploads/%s/chunks/%d" % (uid, i), data=data[i * 1024:(i + 1) * 1024])
         r = self.call(c, "post", "/api/uploads/%s/complete" % uid)
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(c.get("/api/files/%d/download" % r.get_json()["id"]).data, data)
+        download = c.get("/api/files/%d/download" % r.get_json()["id"])
+        try:
+            self.assertEqual(download.data, data)
+        finally:
+            download.close()
 
 
     def test_upload_chunk_and_cancel_are_serialized(self):
@@ -205,14 +215,20 @@ class FileTests(Base):
         png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
         f = self.upload(c, "pic.png", png)
         r = c.get("/api/files/%d/preview" % f["id"])
-        self.assertEqual((r.status_code, r.mimetype), (200, "image/png"))
+        try:
+            self.assertEqual((r.status_code, r.mimetype), (200, "image/png"))
+        finally:
+            r.close()
         fake = self.upload(c, "evil.png", b"<script>alert(1)</script>")  # not a real PNG
         self.assertFalse(fake["previewable"])
         self.assertEqual(c.get("/api/files/%d/preview" % fake["id"]).status_code, 415)
         html = self.upload(c, "page.html", b"<script>alert(1)</script>")
         r = c.get("/api/files/%d/download" % html["id"])
-        self.assertEqual(r.mimetype, "application/octet-stream")
-        self.assertIn("attachment", r.headers["Content-Disposition"])
+        try:
+            self.assertEqual(r.mimetype, "application/octet-stream")
+            self.assertIn("attachment", r.headers["Content-Disposition"])
+        finally:
+            r.close()
 
     def test_path_traversal_names(self):
         c = self.register()

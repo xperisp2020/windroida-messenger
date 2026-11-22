@@ -15,8 +15,15 @@ class ShareTests(Base):
         info = anon.get("/api/public/" + s["token"]).get_json()
         self.assertEqual((info["name"], info["needs_password"]), ("report.txt", False))
         r = anon.get("/api/public/%s/download" % s["token"])
-        self.assertEqual(r.data, b"public content")
-        self.assertEqual(anon.get("/s/" + s["token"]).status_code, 200)
+        try:
+            self.assertEqual(r.data, b"public content")
+        finally:
+            r.close()
+        page = anon.get("/s/" + s["token"])
+        try:
+            self.assertEqual(page.status_code, 200)
+        finally:
+            page.close()
         self.assertEqual(c.get("/api/shares").get_json()["items"][0]["downloads"], 1)
 
     def test_password_protected_link(self):
@@ -27,7 +34,11 @@ class ShareTests(Base):
         self.assertEqual((r.status_code, r.get_json()["error"]), (403, "password_required"))
         self.assertEqual(anon.post("/api/public/%s/unlock" % s["token"], json={"password": "wrong"}).status_code, 403)
         self.assertEqual(anon.post("/api/public/%s/unlock" % s["token"], json={"password": "open-sesame"}).status_code, 200)
-        self.assertEqual(anon.get("/api/public/%s/download" % s["token"]).data, b"public content")
+        download = anon.get("/api/public/%s/download" % s["token"])
+        try:
+            self.assertEqual(download.data, b"public content")
+        finally:
+            download.close()
         # another visitor is still locked out
         self.assertEqual(self.new_client().get("/api/public/%s/download" % s["token"]).status_code, 403)
 
