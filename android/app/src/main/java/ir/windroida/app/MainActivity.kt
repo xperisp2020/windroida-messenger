@@ -97,7 +97,9 @@ class MainActivity : Activity() {
         internalOnly = internalLaunch && intent.getBooleanExtra("only", false)
         internalOnce = internalLaunch && intent.getBooleanExtra("once", false)
         // Exported launcher/share intents cannot assert privileged one-off WebView mode.
-        if (Prefs.mode(this) == "native" && (!internalLaunch || (!internalOnly && !internalOnce))) {
+        val secureServer = Prefs.server(this).startsWith("https://") && Prefs.pin(this).isNotEmpty()
+        val forceWeb = intent.getBooleanExtra("forceWeb", false)
+        if (Prefs.mode(this) == "native" && secureServer && !forceWeb && (!internalLaunch || (!internalOnly && !internalOnce))) {
             // Preserve the user's current native-mode choice for authenticated notification launches.
             val go = Intent(this, NativeActivity::class.java)
             if (internalLaunch) go.putExtra("chat", intent.getIntExtra("chat", 0))
@@ -129,7 +131,7 @@ class MainActivity : Activity() {
         s.allowFileAccess = false
         s.cacheMode = WebSettings.LOAD_DEFAULT
         s.userAgentString = s.userAgentString + " WindroidaApp/1"
-        web.addJavascriptInterface(Bridge(), "WD")
+        configureNativeBridge()
 
         web.webViewClient = object : WebViewClient() {
             // Defense in depth: redirects must not land a foreign document inside a WebView with a native bridge.
@@ -194,7 +196,7 @@ class MainActivity : Activity() {
             /** app pages + opened media live inside the app (works with no internet); files shared INTO the app are served to the page from here */
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? {
                 try {
-                    if (!r.method.equals("GET", true)) return null
+                    if (!isSecureTransport() || !r.method.equals("GET", true)) return null
                     val server = Prefs.server(this@MainActivity)
                     val u = r.url
                     if (!TrustedOrigin.sameOrigin(server, u.toString())) return null
@@ -224,8 +226,9 @@ class MainActivity : Activity() {
         }
 
         web.webChromeClient = object : WebChromeClient() {
-            override fun onPermissionRequest(r: PermissionRequest) { runOnUiThread { handlePermission(r) } }
+            override fun onPermissionRequest(r: PermissionRequest) { runOnUiThread { if (isSecureTransport()) handlePermission(r) else r.deny() } }
             override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, p: WebChromeClient.FileChooserParams): Boolean {
+                if (!isSecureTransport()) { cb.onReceiveValue(null); return false }
                 fileCb?.onReceiveValue(null)
                 fileCb = cb
                 // the full system file manager (all folders, any file type, apk included), not only the "recent" list
@@ -242,18 +245,27 @@ class MainActivity : Activity() {
             }
         }
 
-        web.setDownloadListener { url, _, cd, mime, _ -> download(url, cd, mime) }
+        web.setDownloadListener { url, _, cd, mime, _ ->
+            if (isSecureTransport()) download(url, cd, mime)
+            else Toast.makeText(this, "برای دانلود امن، سرور را با HTTPS باز کنید", Toast.LENGTH_LONG).show()
+        }
 
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 79)
 
         pendingChat = if (internalLaunch) intent.getIntExtra("chat", 0) else 0
-        handleShare(intent)
+        if (isSecureTransport()) handleShare(intent)
+        else {
+            // HTTP is retained only as a restricted compatibility mode: never keep or transmit native credentials.
+            NotifyService.stop(this)
+            Prefs.setToken(this, "")
+            Toast.makeText(this, "اتصال HTTP رمزگذاری نشده است؛ امکانات بومی، فایل، دوربین، میکروفون و اعلان‌ها غیرفعال‌اند. برای امنیت از HTTPS استفاده کنید.", Toast.LENGTH_LONG).show()
+        }
         if (Prefs.server(this).isEmpty()) askServer() else {
             val hash = if (internalLaunch) intent.getStringExtra("hash") else null
             web.loadUrl(withBridgeNonce(Prefs.server(this) + (hash?.let { "#" + it } ?: "")))
         }
-        NotifyService.start(this)
+        if (isSecureTransport()) NotifyService.start(this)
     }
 
     override fun onNewIntent(i: Intent) {
@@ -288,6 +300,14 @@ class MainActivity : Activity() {
             val chat = i.getIntExtra("chat", 0)
             if (chat > 0) web.evaluateJavascript("try{openChat($chat)}catch(e){}", null)
         }
+    }
+
+    private fun isSecureTransport(): Boolean =
+        Prefs.server(this).startsWith("https://", ignoreCase = true)
+
+    private fun configureNativeBridge() {
+        if (isSecureTransport()) web.addJavascriptInterface(Bridge(), "WD")
+        else web.removeJavascriptInterface("WD")
     }
 
     private fun hideSplash() {
@@ -353,17 +373,31 @@ class MainActivity : Activity() {
             .setPositiveButton("ذخیره") { _, _ ->
                 val v = et.text.toString().trim().trimEnd('/')
                 if (v.startsWith("http://") || v.startsWith("https://")) {
+                    if (v.startsWith("http://")) {
+                        AlertDialog.Builder(this).setTitle("اتصال HTTP ناامن است")
+                            .setMessage("HTTP ترافیک، رمز عبور و پیام‌ها را رمزگذاری نمی‌کند و در برابر شنود و دست‌کاری شبکه محافظت ندارد. در این حالت امکانات بومی Windroida، اعلان پس‌زمینه، پل JavaScript، انتخاب فایل، دوربین، میکروفون و دانلود بومی غیرفعال می‌شوند. فقط در شبکه مورد اعتماد و با پذیرش خطر ادامه دهید.")
+                            .setNegativeButton("لغو", null)
+                            .setPositiveButton("ادامه با محدودیت") { _, _ -> saveServerAddress(v) }.show()
+                    } else saveServerAddress(v)
+                } else { Toast.makeText(this, "آدرس باید با https:// یا http:// شروع بشه", Toast.LENGTH_SHORT).show(); askServer(cancelable) }
+            }
+        if (cancelable) b.setNegativeButton("لغو", null)
+        b.show()
+    }
+
+    private fun saveServerAddress(v: String) {
                     if (v != Prefs.server(this)) {
                         Prefs.setPin(this, ""); Prefs.setToken(this, ""); NotifyService.stop(this); MediaCache.clearAll()
                         getSharedPreferences("wd", MODE_PRIVATE).edit().remove("drive_port").remove("ghab_port").apply()
                     }
                     Prefs.setServer(this, v)
+                    configureNativeBridge()
+                    if (isSecureTransport()) NotifyService.start(this) else {
+                        NotifyService.stop(this)
+                        Prefs.setToken(this, "")
+                    }
                     web.clearCache(true)
                     web.loadUrl(withBridgeNonce(v))
-                } else { Toast.makeText(this, "آدرس باید با https:// یا http:// شروع بشه", Toast.LENGTH_SHORT).show(); askServer(cancelable) }
-            }
-        if (cancelable) b.setNegativeButton("لغو", null)
-        b.show()
     }
 
     private fun askTrust(fp: String, h: SslErrorHandler) {
@@ -374,7 +408,7 @@ class MainActivity : Activity() {
     }
 
     private fun handlePermission(r: PermissionRequest) {
-        if (!TrustedOrigin.sameOrigin(Prefs.server(this), r.origin.toString())) { r.deny(); return }
+        if (!isSecureTransport() || !TrustedOrigin.sameOrigin(Prefs.server(this), r.origin.toString())) { r.deny(); return }
         val need = ArrayList<String>()
         for (res in r.resources) {
             if (res == PermissionRequest.RESOURCE_AUDIO_CAPTURE) need.add(Manifest.permission.RECORD_AUDIO)
@@ -408,7 +442,7 @@ class MainActivity : Activity() {
     private fun saveFile(url: String, rawName: String) {
         val server = Prefs.server(this)
         val u = Uri.parse(url)
-        if (!TrustedOrigin.sameOrigin(server, url) || u.path?.matches(Regex("/media/\\d+")) != true) {
+        if (!isSecureTransport() || !TrustedOrigin.sameOrigin(server, url) || u.path?.matches(Regex("/media/\\d+")) != true) {
             Toast.makeText(this, "این دانلود مجاز نیست", Toast.LENGTH_SHORT).show(); return
         }
         var name = rawName.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().trim('.').take(120)
@@ -484,7 +518,7 @@ class MainActivity : Activity() {
         val server = Prefs.server(this)
         val url = if (url0.startsWith("/")) server + url0 else url0   // the page may pass a relative path
         val u = Uri.parse(url)
-        if (!TrustedOrigin.sameOrigin(server, url) || u.path?.matches(Regex("/media/\\d+")) != true) {
+        if (!isSecureTransport() || !TrustedOrigin.sameOrigin(server, url) || u.path?.matches(Regex("/media/\\d+")) != true) {
             Toast.makeText(this, "این ویدیو مجاز نیست", Toast.LENGTH_SHORT).show(); return
         }
         startActivity(Intent(this, PlayerActivity::class.java).putExtra("url", url).putExtra("title", title))
@@ -492,7 +526,7 @@ class MainActivity : Activity() {
 
     /** the system DownloadManager can't talk to a self-signed server, so we download with the pinned certificate ourselves */
     private fun download(url: String, cd: String?, mime: String?) {
-        if (url.startsWith("blob:") || url.startsWith("data:") || !TrustedOrigin.sameOrigin(Prefs.server(this), url)) {
+        if (!isSecureTransport() || url.startsWith("blob:") || url.startsWith("data:") || !TrustedOrigin.sameOrigin(Prefs.server(this), url)) {
             Toast.makeText(this, "این دانلود مجاز نیست", Toast.LENGTH_SHORT).show(); return
         }
         Thread {
