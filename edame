@@ -231,3 +231,29 @@
   3. بررسی دقیق SSO/share replay و raceهای دیگر فایل.
   4. تعیین تکلیف PRهای وابسته #2/#3/#4 پس از مقایسه diff و پایه‌ها.
   5. تست دستگاه Android واقعی و Windows واقعی همچنان انجام‌نشده است.
+
+
+## 2026-11-22 — چرخه هفتم: lifecycle مجوزهای WebView و بازبینی PRهای میزبانی
+- SHA کد این چرخه: `21376f00d8421aa9de9d2b79513807e426f9410e`.
+- ممیزی `MainActivity.kt` نشان داد درخواست مجوز WebView می‌توانست هنگام باز بودن دیالوگ مجوز Android در وضعیت pending باقی بماند و پس از navigation یا نابودی Activity پاسخ داده شود. callback لغو WebView نیز پیاده‌سازی نشده بود.
+- اصلاحات:
+  - لغو و پاک‌سازی درخواست pending هنگام شروع navigation سند اصلی.
+  - پیاده‌سازی `onPermissionRequestCanceled` و لغو فقط همان درخواست.
+  - پاک‌سازی درخواست مجوز و file chooser هنگام `onDestroy`.
+  - نگهداری origin درخواست و پیش از grant نهایی، بررسی مجدد HTTPS+pin، origin درخواست، origin صفحه فعلی، زنده‌بودن Activity و مجوزهای runtime فعلی.
+  - اضافه‌شدن تست‌های policy برای رد grant در transport ناامن، origin نامعتبر/قدیمی، صفحه تغییرکرده و runtime permission ردشده.
+- CI روی SHA بالا:
+  - Python security workflow `45002128671`: **success**؛ شامل Cloud Drive، Messenger، Gateway، Ghab، bridge syntax، backup/key policy و Windows ACL.
+  - Android workflow `45002128658`: Android unit tests **success**؛ در زمان ثبت این یادداشت، مرحله بررسی fail-closed بودن Release بدون کلید خصوصی هنوز در حال اجرا بود؛ نتیجه نهایی assembleDebug و artifact هنوز تأیید نشده است.
+- ممیزی PRها:
+  - PR #2 فقط یک سند معماری peer-hosted است؛ PR #3 منطق ظرفیت عضو/آنلاین را به server اضافه می‌کند؛ PR #4 runtime آزمایشی میزبانی Android را اضافه می‌کند.
+  - هر سه PR همچنان بر پایه commitهای قدیمی از شاخه امنیتی هستند و GitHub آن‌ها را `mergeable=false` گزارش می‌کند. rebase یا تغییر base انجام نشد تا از ادغام ناخواسته و حل تعارض بدون بررسی جلوگیری شود.
+  - در PR #4 یک نقص مهم پیدا شد: `android/app/build.gradle.kts` در حالت نبود کلید release، امضای debug را به release اختصاص می‌داد. اصلاح شد تا فقط keystore کامل و متعلق به مالک release را امضا کند و taskهای `packageRelease`/`bundleRelease` بدون آن با خطای صریح fail شوند. workflow آن PR نیز negative check اضافه کرد.
+  - PR #4 commits: `156a9ea19e1b067acdc91a95f4307fa280d87642`, `26236f35a4e151fa3dc82050eacdb8e0ed362421`. متن PR به‌روزرسانی شد؛ validation این دو commit هنوز در دسترس/تأییدشده نیست.
+- وضعیت: PR #1 باز و ادغام‌نشده؛ `main` تغییر نکرد. PRهای #2 تا #4 باز و ادغام‌نشده‌اند.
+- موارد باز:
+  1. تکمیل Android workflow `45002128658` و بررسی دقیق هر خطا.
+  2. CI واقعی برای commitهای جدید PR #4؛ اجرای emulator integration test نیز هنوز انجام نشده.
+  3. بازبینی raceهای lifecycle در HostService و پایداری runtime Android روی دستگاه واقعی.
+  4. حل ancestry/conflicts و rebase PRهای #2/#3/#4 فقط پس از بررسی دقیق diff و وابستگی‌ها.
+  5. ممیزی عمیق‌تر bridge در برابر iframeهای same-origin؛ nonce در URL fragment به‌تنهایی مرز امنیتی برای iframe هم‌مبدأ نیست و نیاز به مدل threat و راهکار دقیق‌تر دارد.
