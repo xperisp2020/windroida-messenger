@@ -10,7 +10,9 @@ import datetime
 import ipaddress
 import os
 import socket
+import stat
 import subprocess
+import tempfile
 
 from .config import CERT_DIR
 
@@ -46,16 +48,57 @@ def custom_cert():
     # ویندروید گواهی خودش را به همین سرور هم می‌دهد (GHAB_CERT / GHAB_KEY)
     ec, ek = os.environ.get('GHAB_CERT'), os.environ.get('GHAB_KEY')
     if ec and ek and os.path.exists(ec) and os.path.exists(ek):
+        _restrict_private_key(ek)
         return ec, ek
     crt, key = os.path.join(CUSTOM_DIR, 'fullchain.pem'), os.path.join(CUSTOM_DIR, 'privkey.pem')
-    return (crt, key) if os.path.exists(crt) and os.path.exists(key) else None
+    if os.path.exists(crt) and os.path.exists(key):
+        _restrict_private_key(key)
+        return crt, key
+    return None
+
+
+def _restrict_private_key(path):
+    if os.path.islink(path):
+        raise PermissionError(f'refusing symlink for private key: {path}')
+    if os.name == 'posix':
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        if mode != 0o600:
+            raise PermissionError(f'private key permissions are {mode:o}, expected 600: {path}')
+    elif os.name == 'nt':
+        account = subprocess.run(['whoami'], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(['icacls', path, '/reset'], check=True, capture_output=True, text=True)
+        subprocess.run(['icacls', path, '/inheritance:r', '/grant:r', f'{account}:(F)'],
+                       check=True, capture_output=True, text=True)
 
 
 def _write_key(path, key):
     from cryptography.hazmat.primitives import serialization
-    with open(path, 'wb') as f:
-        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
-                                  serialization.NoEncryption()))
+    data = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                             serialization.NoEncryption())
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(prefix='.private-key-', suffix='.tmp', dir=directory)
+    try:
+        if os.name == 'posix':
+            os.fchmod(fd, 0o600)
+        elif os.name == 'nt':
+            _restrict_private_key(tmp)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+        _restrict_private_key(path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _ensure_ca():
@@ -64,6 +107,7 @@ def _ensure_ca():
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.x509.oid import NameOID
     if os.path.exists(CA_CERT) and os.path.exists(CA_KEY):
+        _restrict_private_key(CA_KEY)
         with open(CA_KEY, 'rb') as f:
             key = serialization.load_pem_private_key(f.read(), None)
         with open(CA_CERT, 'rb') as f:
@@ -88,7 +132,13 @@ def _ensure_ca():
 
 
 def _needs_renewal(crt, mark, sig):
-    if not (os.path.exists(crt) and os.path.exists(mark)) or open(mark).read() != sig:
+    if not (os.path.exists(crt) and os.path.exists(mark)):
+        return True
+    try:
+        with open(mark, encoding='utf-8') as f:
+            if f.read() != sig:
+                return True
+    except OSError:
         return True
     try:
         from cryptography import x509
@@ -109,6 +159,7 @@ def ensure_cert(*extra):
     crt, key, mark = (os.path.join(CERT_DIR, n) for n in ('cert.pem', 'key.pem', 'hosts.txt'))
     sig = ','.join(hosts)
     if not _needs_renewal(crt, mark, sig) and os.path.exists(key):
+        _restrict_private_key(key)
         return crt, key
     try:
         from cryptography import x509
@@ -134,16 +185,26 @@ def ensure_cert(*extra):
         _write_key(key, k)
         with open(crt, 'wb') as f:
             f.write(cert.public_bytes(serialization.Encoding.PEM) + ca.public_bytes(serialization.Encoding.PEM))
-        open(mark, 'w').write(sig)
+        with open(mark, 'w', encoding='utf-8') as f:
+            f.write(sig)
         return crt, key
+    except PermissionError:
+        raise
     except Exception:
         pass
     try:  # بدون کتابخانه cryptography: گواهی خودامضا با openssl
-        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', crt,
-                        '-days', '397', '-subj', '/CN=' + hosts[0],
-                        '-addext', 'subjectAltName=' + ','.join(f'{t}:{v}' for t, v in _san(hosts))],
-                       check=True, capture_output=True)
-        open(mark, 'w').write(sig)
+        old_umask = os.umask(0o077) if os.name == 'posix' else None
+        try:
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', crt,
+                            '-days', '397', '-subj', '/CN=' + hosts[0],
+                            '-addext', 'subjectAltName=' + ','.join(f'{t}:{v}' for t, v in _san(hosts))],
+                           check=True, capture_output=True)
+        finally:
+            if old_umask is not None:
+                os.umask(old_umask)
+        _restrict_private_key(key)
+        with open(mark, 'w', encoding='utf-8') as f:
+            f.write(sig)
         return crt, key
     except Exception:
         return None

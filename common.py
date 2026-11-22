@@ -206,6 +206,11 @@ CREATE TABLE IF NOT EXISTS messages (
     edited_at  INTEGER,
     deleted    INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS ghab_share_used (
+    signature TEXT PRIMARY KEY,
+    expires   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ghab_share_used_expires ON ghab_share_used(expires);
 CREATE TABLE IF NOT EXISTS sessions (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

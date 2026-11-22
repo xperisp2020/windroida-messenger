@@ -1,0 +1,66 @@
+name: Python security tests
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-all.txt
+      - name: Check WebView bridge JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/room.js
+          node --check ghab/web/static/app.js
+          node --check cloud-drive/app/static/js/common.js
+          node tests/test_webview_bridge.js
+      - name: Run Android private-data backup policy tests
+        run: python test_android_backup_policy.py
+      - name: Run private-key permission tests
+        run: python -m unittest -v test_private_key_permissions.py
+      - name: Run Ghab security tests
+        run: python pentest_ghab.py
+      - name: Run Cloud Drive tests
+        working-directory: cloud-drive
+        run: python -m unittest discover -s tests -t . -v
+      - name: Run messenger security tests
+        run: python test_security.py
+      - name: Run gateway security tests
+        run: python pentest_gateway.py
+  windows-secret-acl:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-all.txt
+      - name: Verify owner-only Windows ACLs
+        run: python -m unittest -v test_private_key_permissions.WindowsPrivateAclTests
+      - name: Verify Cloud Drive session-secret ACLs
+        working-directory: cloud-drive
+        run: python -m unittest -v tests.test_sso.TestSso.test_session_secret_windows_acl_is_owner_only

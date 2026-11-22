@@ -1,4 +1,5 @@
 """Permanent deletion + housekeeping (stale uploads, expired trash). Used by routes, admin and the background thread."""
+import time
 from .services import descendant_folders, iso_ago, now
 
 
@@ -25,15 +26,29 @@ def purge_folder(db, storage, folder_id):
 
 
 def cleanup_stale_uploads(db, storage, hours):
+    # Serialize stale-row cleanup with chunk writes/cancel/complete. In particular,
+    # /complete claims (deletes) its DB row before assembling the staged directory.
+    # A concurrent housekeeping pass must not mistake that live directory for an orphan.
+    if db.in_transaction:
+        db.commit()
+    db.execute("BEGIN IMMEDIATE")
     cutoff = iso_ago(hours=hours)
     stale = [r["id"] for r in db.execute("SELECT id FROM uploads WHERE updated_at<?", (cutoff,))]
     for uid in stale:
         db.execute("DELETE FROM uploads WHERE id=?", (uid,))
         storage.drop_upload(uid)
     known = {r["id"] for r in db.execute("SELECT id FROM uploads")}
-    for d in storage.list_upload_dirs():  # orphan staging dirs (older than the window: no DB row at all)
-        if d not in known:
-            storage.drop_upload(d)
+    orphan_cutoff = time.time() - max(0, hours) * 3600
+    for d in storage.list_upload_dirs():
+        if d in known:
+            continue
+        # A recently touched directory with no row may belong to /complete, which
+        # has atomically claimed the upload and is assembling it outside the DB lock.
+        try:
+            if storage._upload_dir(d).stat().st_mtime < orphan_cutoff:
+                storage.drop_upload(d)
+        except FileNotFoundError:
+            pass
     db.commit()
     return len(stale)
 

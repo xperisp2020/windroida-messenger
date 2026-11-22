@@ -1,6 +1,9 @@
 """تنظیمات یک‌جا. همه مسیرها و عددها از اینجا می‌آیند."""
 import os
 import secrets
+import stat
+import subprocess
+import tempfile
 
 VERSION = '2.4.3'
 PORT = int(os.environ.get('GHAB_PORT', 8084))
@@ -9,6 +12,8 @@ WD_PORT = int(os.environ.get('WD_WEB_PORT', 8081))  # پیام‌رسان وین
 # است. وب‌پنل ادمین حذف شده؛ ادمینی فقط از دیتاشیت ویندروید.
 PASSWORD_AUTH = os.environ.get('GHAB_PASSWORD_AUTH', '0') == '1'  # پیش‌فرض خاموش: ساخت حساب و ورود فقط از ویندروید
 SSO_SECRET = os.environ.get('GHAB_SSO_SECRET', '').strip()
+if SSO_SECRET and len(SSO_SECRET.encode('utf-8')) < 32:
+    raise RuntimeError('GHAB_SSO_SECRET must contain at least 32 bytes of secret material')
 MIN_FREE_MB = int(os.environ.get('GHAB_MIN_FREE_MB', 500))  # کمتر از این فضای خالی: آپلود جدید رد می‌شود
 MAX_UPLOAD_MB = 600  # سقف ایمنی؛ ویدیوها بعد از آپلود خودکار فشرده می‌شوند
 BACKUP = os.environ.get('GHAB_BACKUP', '0') == '1'  # پشتیبان خودکار قبل از ارتقای دیتابیس (پیش‌فرض خاموش تا دیسک پر نشود)
@@ -33,10 +38,60 @@ def ensure_dirs():
         os.makedirs(d, exist_ok=True)
 
 
+def _restrict_session_secret(path):
+    if os.path.islink(path):
+        raise PermissionError(f'refusing symlink for session secret: {path}')
+    if os.name == 'posix':
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        if mode != 0o600:
+            raise PermissionError(f'session secret permissions are {mode:o}, expected 600: {path}')
+    elif os.name == 'nt':
+        account = subprocess.run(['whoami'], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(['icacls', path, '/reset'], check=True, capture_output=True, text=True)
+        subprocess.run(['icacls', path, '/inheritance:r', '/grant:r', f'{account}:(F)'],
+                       check=True, capture_output=True, text=True)
+
+
+def _write_session_secret(path, value):
+    """Atomically write a session secret with restrictive permissions before secret bytes are written."""
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(prefix='.session-secret-', suffix='.tmp', dir=directory)
+    try:
+        if os.name == 'posix':
+            os.fchmod(fd, 0o600)
+        elif os.name == 'nt':
+            _restrict_session_secret(tmp)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(value)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.name == 'posix' and stat.S_IMODE(os.stat(tmp).st_mode) != 0o600:
+            raise PermissionError(f'temporary session secret is not mode 600: {tmp}')
+        os.replace(tmp, path)
+        _restrict_session_secret(path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def secret_key():
     p = os.path.join(DATA_DIR, 'secret.key')
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if os.path.islink(p):
+        raise PermissionError(f'refusing symlink for session secret: {p}')
     if not os.path.exists(p):
-        with open(p, 'w') as f:
-            f.write(secrets.token_hex(32))
-    with open(p) as f:
-        return f.read().strip()
+        _write_session_secret(p, secrets.token_hex(32))
+    _restrict_session_secret(p)
+    with open(p, encoding='utf-8') as f:
+        value = f.read().strip()
+    if len(value) < 32:
+        raise RuntimeError('Ghab session secret is missing or too short')
+    return value

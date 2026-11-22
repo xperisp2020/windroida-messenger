@@ -2,9 +2,13 @@
 import logging
 import os
 import secrets
+import stat
+import subprocess
+import tempfile
 import threading
 import time
 from datetime import timedelta
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -20,18 +24,76 @@ from .storage import LocalStorage
 __version__ = "1.0.0"
 
 
+def _restrict_secret_file(path):
+    """Restrict an existing session-signing secret and fail closed on permission errors."""
+    if path.is_symlink():
+        raise PermissionError("refusing symlink for Cloud Drive session secret: %s" % path)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode != 0o600:
+            raise PermissionError("Cloud Drive session secret permissions are %o, expected 600" % mode)
+    elif os.name == "nt":
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(["icacls", str(path), "/reset"], check=True, capture_output=True, text=True)
+        subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", "%s:(F)" % account],
+                       check=True, capture_output=True, text=True)
+
+
+def _write_secret_file(path, value):
+    """Atomically create a private session secret; lock down the temporary file before writing secret bytes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".session-secret-", suffix=".tmp", dir=str(path.parent))
+    try:
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        elif os.name == "nt":
+            _restrict_secret_file(Path(tmp))
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if os.name == "posix" and stat.S_IMODE(os.stat(tmp).st_mode) != 0o600:
+            raise PermissionError("temporary Cloud Drive session secret is not mode 600")
+        os.replace(tmp, path)
+        _restrict_secret_file(path)
+        if os.name == "posix":
+            try:
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _resolve_secret(app):
     key = app.config.get("SECRET_KEY")
     if key:
+        if not isinstance(key, str) or len(key.encode("utf-8")) < 32:
+            raise RuntimeError("CD_SECRET_KEY must contain at least 32 bytes of secret material")
         return key
     f = app.config["DATA_DIR"] / "secret.key"  # generated once, random, never in the source tree
+    if f.is_symlink():
+        raise PermissionError("refusing symlink for Cloud Drive session secret: %s" % f)
     if not f.exists():
-        f.write_text(secrets.token_hex(32))
-        try:
-            os.chmod(f, 0o600)
-        except OSError:
-            pass
-    return f.read_text().strip()
+        _write_secret_file(f, secrets.token_hex(32))
+    _restrict_secret_file(f)
+    value = f.read_text(encoding="utf-8").strip()
+    if len(value) < 32:
+        raise RuntimeError("Cloud Drive session secret is missing or too short")
+    return value
 
 
 def run_housekeeping(app):
@@ -107,13 +169,18 @@ def create_app(**overrides):
         if resp.status_code < 500:
             dbm.commit_db()
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        # The Android WebView exposes a privileged bridge; nested frames must not inherit it.
+        # Same-origin frames share origin storage, so disallow them rather than relying on a page nonce.
+        resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
         resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # The privileged Android WebView must not load child frames. Keep the browser's same-origin
+        # PDF preview working outside the app; frame-ancestors still prevents external embedding.
+        frame_src = "'none'" if "WindroidaApp/1" in request.headers.get("User-Agent", "") else "'self'"
         resp.headers.setdefault("Content-Security-Policy",
                                 "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-                                "frame-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'; "
-                                "frame-ancestors 'self'")
+                                f"frame-src {frame_src}; object-src 'none'; base-uri 'self'; form-action 'self'; "
+                                "frame-ancestors 'none'")
         if app.config["COOKIE_SECURE"] and app.config.get("HSTS", True):
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         if request.path.startswith("/api/") and "Cache-Control" not in resp.headers:

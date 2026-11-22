@@ -14,10 +14,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- User-selected HTTP self-hosts remain a restricted web-only compatibility mode. Native APIs, bridge, file/media and notification credentials require pinned HTTPS. -->
     <application
         android:label="Windroida"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 

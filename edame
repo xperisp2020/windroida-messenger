@@ -1,0 +1,319 @@
+# ادامه فورک Windroida Messenger
+آخرین بروزرسانی: 2026-11-22 (UTC)
+
+## هدف و قواعد ادامه کار
+- مخزن: https://github.com/xperisp2020/windroida-messenger
+- شاخه اصلی توسعه امنیتی: `fix/security-test-integrity`
+- شاخه `main` نباید بدون تصمیم صریح کاربر تغییر کند؛ اصلاحات از طریق شاخه و Pull Request انجام شوند.
+- نام ثبت‌کننده تغییرات/مؤلف در متن‌های جدید پروژه: `shiraztipsy`؛ نام ChatGPT یا دستیار در هیچ فایل، کامیت، مستند یا رابط برنامه درج نشود.
+- چرخه اجباری: بررسی وضعیت و کد ← شناسایی ایراد با شواهد ← اصلاح کوچک و مستقل ← اجرای تست‌های مرتبط ← بررسی مجدد diff و رفتار ← اجرای مجدد تست‌ها و CI ← ثبت نتیجه و مرحله بعد در همین فایل. چرخه را تا رسیدن به نتیجه قابل اتکا ادامه بده؛ تست اجرا نشده را موفق گزارش نکن.
+- این فایل دفتر ثبت پیوسته است. در هر نوبت کاری، پیش از پایان، اقدامات، فایل‌ها، تصمیم‌ها، نتایج واقعی تست، خطاهای باز و قدم بعدی را به‌روزرسانی کن. تاریخ/ساعت و SHA شاخه را ثبت کن. تاریخچه قبلی را حذف نکن.
+- توسعه Windows و Android هر دو باید در بررسی‌ها و CI پوشش داده شوند. به‌ویژه رفتار Windows ACL و Android build/test حفظ شود.
+
+## وضعیت مخزن هنگام شروع این دفتر
+- مخزن عمومی و فورک است؛ دسترسی خواندن/نوشتن تأیید شده.
+- شاخه پیش‌فرض: `main`.
+- PR #1 باز و ادغام‌نشده؛ عنوان: Harden Android WebView bridge, TLS, secrets and security CI.
+- شاخه PR #1: `fix/security-test-integrity`.
+- SHA فعلی مشاهده‌شده شاخه: `c80b07ce61d9408c531d41f2f3a64951aac85e93`.
+- PR #1 به `main` هدف‌گذاری شده و main در جریان کار قبلی دست‌نخورده مانده است.
+- PRهای دیگر باز هستند و بر شاخه امنیتی پایه‌گذاری شده‌اند:
+  - PR #2، شاخه `feature/peer-hosted-android-design`، سند معماری میزبانی مستقل گوشی و دعوت امن؛ Draft.
+  - PR #3، شاخه `feature/cross-platform-peer-hosting`، کنترل ظرفیت میزبانی Windows/Android.
+  - PR #4، شاخه `feature/android-phone-host`، runtime آزمایشی میزبان Android.
+- ترتیب وابستگی مهم است: PR #2/#3/#4 فعلاً به `fix/security-test-integrity` وابسته‌اند؛ قبل از ادغام/تغییر پایه، زنجیره PRها و diff هر شاخه بازبینی شود.
+
+## سابقه اقدامات تأییدشده
+### 2026-11-21 — امنیت و CI
+- تست‌های امنیتی کاذب/غیرمعتبر و رفتار exit code شکست بررسی و اصلاح شد.
+- workflow امنیت Python برای اجرای تست‌های Ghab، Messenger و Gateway اضافه/اصلاح شد.
+- اصلاحات امنیتی Android شامل احراز هویت bridge با nonce، کنترل origin/navigation، محدودیت TLS/redirect، حفاظت فایل کلیدها و secretها، backup exclusions و تست‌های مرتبط در PR #1 ثبت شده است.
+- طبق بدنه PR #1، workflowهای Python security و Windows ACL موفق گزارش شده‌اند؛ Android workflow run شماره 44917242581 شامل unit tests، assembleDebug و artifact upload موفق گزارش شده است. APK خروجی debug است، نه production-signed.
+- طبق سوابق قبلی: Ghab برابر 86/0؛ Messenger ابتدا 55/56 و پس از اصلاح سناریوی voice_played موفق؛ Gateway موفق.
+- محدودیت اعلام‌شده: آزمون دستگاه فیزیکی، استقرار production و pentest مستقل بیرونی انجام نشده است.
+- HTTP cleartext برای سازگاری با self-hosted HTTP هنوز در برخی مسیرها مجاز مانده؛ این موضوع باید با تصمیم محصول و محدودسازی صریح بررسی شود.
+
+### 2026-11-22 — بازبینی وضعیت جاری
+- PR #1 در زمان بازبینی همچنان open/unmerged و mergeable گزارش شد؛ head همان SHA بالا بود.
+- PRهای #2، #3، #4 نیز open هستند.
+- آخرین workflow run بررسی‌شده: #44945316840 برای PR #4؛ jobهای security-tests و windows-secret-acl و تمام stepهای فهرست‌شده موفق بودند. workflow ساخت APK برای همان head نیز run #44945316825 با نتیجه success گزارش شد.
+- runهای قبلی برخی cancelled هستند؛ موارد cancelled را شکست کد تلقی نکن، ولی نتیجه نهایی head فعلی ملاک است.
+- فایل `edame` پیش از این commit در شاخه وجود نداشت؛ این فایل برای اولین بار در همین commit ایجاد می‌شود.
+
+## یافته‌های باز / موارد نیازمند ممیزی
+1. ممیزی عمیق منطق احراز هویت، نشست، CSRF، SSO، مجوزهای شیء/IDOR، اشتراک‌گذاری، آپلود/دانلود و محدودیت منابع در Python backend و Cloud Drive؛ تست‌های موجود به‌تنهایی کافی نیستند.
+2. بازبینی امنیت Android: exported components، intents/deep links، WebView bridge، TLS/pinning، backup، permissions، notification/log privacy، local storage و چرخه‌عمر host runtime.
+3. بررسی signing: اطمینان از اینکه release build هرگز با debug keystore امضا نشود؛ نبود secret امضای production باید به‌صورت fail-closed و شفاف مدیریت شود.
+4. بررسی تنظیمات proxy و اعتماد به X-Forwarded-For؛ فقط proxyهای مورد اعتماد باید بتوانند IP مبدأ را تعیین کنند و زنجیره هدر باید درست parse شود.
+5. بررسی rate limiterهای درون‌حافظه‌ای در برابر چند worker/چند replica و اطمینان از اینکه محدودیت‌های حیاتی سمت backend enforce شوند.
+6. بررسی اتمیک بودن مصرف replay token و دعوت‌ها، race conditionها و transaction boundaryها.
+7. ارزیابی دقیق PR #3 و #4 از منظر ظرفیت، race، توقف امن TLS/server، path handling، sandbox و دسترسی شبکه؛ تست CI سبز به‌تنهایی اثبات امنیت نیست.
+8. بررسی dependency pinning، supply-chain، workflow permissions، action pinning، secrets exposure و artifact provenance.
+9. تست یکپارچه روی دو دستگاه Android واقعی و Windows واقعی در صورت فراهم بودن محیط؛ فعلاً این موارد را انجام‌شده فرض نکن.
+10. ارزیابی امکان‌پذیری ادعاهای E2EE، NAT traversal/relay و میزبانی اینترنتی؛ هر قابلیت آزمایشی باید دقیقاً با وضعیت واقعی برچسب‌گذاری شود.
+
+## برنامه ادامه با اولویت
+1. ابتدا محتوای فعلی شاخه‌ها و PRها را مجدداً بخوان و diffهای PR #2/#3/#4 را کامل مرور کن؛ تغییرات هم‌پوشان/وابستگی‌ها را مشخص کن.
+2. ممیزی کد اجرایی Python را از مسیرهای حساس آغاز کن؛ برای هر یافته یک تست بازتولیدکننده اضافه کن، سپس fix و regression test.
+3. Android release signing و component/intent/deep-link security را بررسی کن؛ هر اصلاح را با unit tests و assembleDebug و workflow ویندوز/پایتون سازگار کن.
+4. Windows host/capacity/ACL و Android host runtime را در هر تغییر مرتبط تست کن.
+5. پس از هر commit، CI همان head و PRهای وابسته را بررسی کن؛ در صورت fail، log دقیق را بخوان، اصلاح کن و دوباره اجرا کن.
+6. مستندات معماری را با implementation واقعی همگام نگه دار؛ قابلیت طراحی‌شده یا آزمایشی را عملیاتی/امن/تولیدی معرفی نکن.
+7. PR #1 را تا پایان بررسی‌ها باز نگه دار؛ main را مستقیم تغییر نده و PRها را بدون بررسی وابستگی merge نکن.
+
+## قالب ثبت هر نوبت
+برای هر ادامه، یک بخش جدید با تاریخ و SHA پایه اضافه کن:
+- محدوده بررسی:
+- فایل‌ها/مسیرهای بررسی‌شده:
+- یافته‌ها و شدت:
+- تغییرات اعمال‌شده (مسیر + دلیل):
+- تست‌ها و فرمان/Workflow:
+- نتیجه واقعی و SHA:
+- بازبینی پس از اصلاح:
+- ایرادات باز:
+- گام بعدی:
+
+
+## 2026-11-22 — چرخه اصلاح release signing
+- SHA پایه قبل از اصلاح: c80b07ce61d9408c531d41f2f3a64951aac85e93؛ فایل edame در commit جداگانه 9a71e82d4a89bda5107667ae5dcf5b3c1bc6c122 ایجاد شد.
+- محدوده: Android release signing، workflow ساخت APK و مستندات ساخت.
+- یافته با شدت بحرانی برای انتشار: در android/app/build.gradle.kts، وقتی کلید اختصاصی موجود نبود، release به‌صورت خودکار با debug signing config امضا می‌شد. این با ادعای release امن ناسازگار است و هویت ناشر قابل اتکا ایجاد نمی‌کند.
+- تغییرات:
+  - android/app/build.gradle.kts: حذف fallback به debug؛ پیکربندی release فقط با فایل keystore واقعی و رمزهای لازم فعال می‌شود؛ taskهای packageRelease/bundleRelease بدون کلید اختصاصی با خطای صریح متوقف می‌شوند.
+  - android/README-android.md: توضیح شد که نبود کلید فقط debug build مجاز است و release باید متوقف شود.
+  - .github/workflows/android.yml: توضیح build behavior به‌روزرسانی شد؛ در حالت بدون secret، CI فقط debug می‌سازد.
+  - .github/workflows/android.yml: مرحلهٔ جدید برای اجرای assembleRelease بدون کلید و assert کردن خطای «Release signing is not configured» اضافه شد؛ سپس assembleDebug اجرا می‌شود.
+- Commitهای فایل‌های اصلاح‌شده: 580815c2811bde833e4ed9a4ab2eeb5d84040aa8، 2351fa5e015739443ba9d75548301c78f35c42b6، 467818a75716215ff776ddb5b68236dc5f82909e؛ commitهای workflow test و scope task guard نیز در همین شاخه ثبت شدند.
+- تست واقعی این اصلاح هنوز در انتظار CI است؛ تا دریافت نتیجهٔ workflow، اصلاح را تأییدشده ندان.
+- بازبینی اولیه پس از تغییر: متن فایل Gradle مجدداً خوانده شد و دیگر fallback به debug در release وجود ندارد. CI باید guard و build debug را اجرا کند.
+- ایرادات باز: release signing با keystore واقعی در CI آزمایش نشده؛ دستگاه فیزیکی تست نشده؛ بررسی عمیق‌تر Android component/deep-link و Python backend ادامه دارد.
+- گام بعدی: دریافت نتیجهٔ CI روی آخرین head، رفع هر خطای Gradle/Workflow، سپس بررسی امنیت notification/logging و مسیرهای upload/share با تست بازتولیدکننده.
+
+
+## 2026-11-22 — چرخه دوم: جلوگیری از Backup ناخواسته داده‌های خصوصی Android
+- SHA پایه: cc387538a60649ed2322272f80b67c706084f207
+- محدوده بررسی: AndroidManifest، backup_rules، data_extraction_rules، معماری ذخیره‌سازی Host Android و workflow امنیتی.
+- یافته با شدت بالا: برنامه Android در Manifest مقدار allowBackup=true داشت. قواعد قبلی فقط چند SharedPreferences و WebView را exclude می‌کردند؛ دیتابیس پیام‌رسان و فایل‌ها/ضمائم در دامنه‌های database و file مستثنی نشده بودند. بنابراین داده‌های خصوصی برنامه می‌توانستند وارد backup/انتقال دستگاه شوند.
+- تغییرات:
+  - android/app/src/main/AndroidManifest.xml: allowBackup=false.
+  - android/app/src/main/res/xml/backup_rules.xml: استثنای کامل database، file و sharedpref اضافه شد؛ WebView هم همچنان مستثنی است.
+  - android/app/src/main/res/xml/data_extraction_rules.xml: همین استثناها جداگانه برای cloud-backup و device-transfer اضافه شد.
+  - test_android_backup_policy.py: سه regression test برای Manifest، full backup و cloud/device transfer اضافه شد.
+  - .github/workflows/python-security.yml: اجرای تست سیاست backup به workflow امنیتی اضافه شد.
+- بازبینی پس از تغییر: هر چهار فایل از شاخه مجدداً خوانده شدند؛ allowBackup=false و excludeهای database/file/sharedpref در هر دو مسیر backup و انتقال تأیید شدند. اسکریپت تست نیز از مخزن خوانده شد.
+- وضعیت CI: اجرای workflowها روی commitهای میانی به علت pushهای پیاپی و concurrency/cancel-in-progress لغو شد؛ این موارد نتیجه تست محسوب نمی‌شوند. هنوز هیچ ادعای موفقیت برای تست‌های جدید ثبت نشده است. اجرای نهایی باید پس از آخرین commit بررسی شود.
+- ایرادات باز: تست نهایی Gradle assembleDebug و fail-closed assembleRelease، اجرای test_android_backup_policy.py، Python/Ghab/Cloud Drive/Messenger/Gateway و Windows ACL روی آخرین SHA؛ بررسی کامل Android intent/deep link و privacy logging؛ ممیزی upload/share.
+- نکته محصول: غیرفعال‌کردن backup به معنی عدم امکان بازیابی داده‌های برنامه از backup معمول سیستم‌عامل است؛ این انتخاب برای جلوگیری از کپی ناخواسته دیتابیس و فایل‌های خصوصی انجام شد.
+- گام بعدی: پس از ثبت این log، فقط آخرین workflowهای head را تا نتیجه نهایی دنبال کن؛ هر fail را از log دقیق استخراج و اصلاح کن، سپس چرخه را تکرار کن.
+
+## خلاصه وضعیت کنونی و قفل‌های انتشار
+- شاخه کاری: fix/security-test-integrity؛ PR #1 به main باز است و نباید merge شود تا بررسی و CI کامل شوند.
+- اصلاح release signing و سیاست backup هر دو در همین شاخه هستند؛ شاخه‌های PR #2/#3/#4 همچنان وابسته به همین شاخه پایه‌اند.
+- در پایان هر نوبت، edame را با SHA نهایی و وضعیت واقعی تست‌ها به‌روزرسانی کن.
+
+
+## 2026-11-22 — چرخه سوم: اعتماد امن به Reverse Proxy و X-Forwarded-For
+- شاخه: `fix/security-test-integrity`
+- SHA کد/مستندات این چرخه: `5f842330e59b07bbb358a90c3813fad2c180e4a3`
+- یافته: `client_ip()` در صورت فعال بودن `CD_TRUSTED_PROXY=1`، اولین مقدار `X-Forwarded-For` را بدون بررسی IP اتصال‌دهنده و بدون اعتبارسنجی زنجیره می‌پذیرفت. در استقرار اشتباه یا دسترسی مستقیم به backend، مهاجم می‌توانست IP را جعل کند و محدودیت نرخ/ثبت رخداد را دور بزند.
+- اصلاحات:
+  - `cloud-drive/app/config.py`: افزودن `CD_TRUSTED_PROXY_CIDRS` و اعتبارسنجی CIDRها هنگام بارگذاری تنظیمات؛ CIDR نامعتبر باعث توقف startup می‌شود.
+  - `cloud-drive/app/security.py`: هدر forwarded فقط وقتی پذیرفته می‌شود که IP اتصال‌دهنده در شبکه صریحاً مورد اعتماد باشد؛ زنجیره از راست به چپ پیمایش و اولین hop غیرمورداعتماد انتخاب می‌شود؛ ورودی نامعتبر، زنجیره بیش از ۳۲ hop و نبود allowlist به socket peer برمی‌گردند.
+  - `cloud-drive/tests/test_security.py`: پنج تست برای نبود allowlist، peer غیرمجاز، زنجیره پراکسی معتبر، هدر خراب و زنجیره بیش از حد طولانی.
+  - `cloud-drive/README.md`، `.env.example` و `deploy/Caddyfile`: مستندات به‌روزرسانی شد؛ نمونه CIDR دقیق loopback و الزام بستن دسترسی مستقیم backend ذکر شد.
+- بازبینی پس از اصلاح: فایل‌های config، security، تست‌ها، README، نمونه env و Caddyfile دوباره از GitHub خوانده شدند؛ تنظیم CIDR و منطق fail-closed تأیید شد.
+- CI روی SHA `5f842330e59b07bbb358a90c3813fad2c180e4a3`:
+  - Python security workflow شماره `44997419674`: موفق؛ همه مراحل JavaScript syntax/bridge، Android backup policy، private-key permissions، Ghab، Cloud Drive، Messenger و Gateway موفق.
+  - Windows ACL job: موفق؛ owner-only ACL و Cloud Drive session-secret ACL موفق.
+  - Android workflow شماره `44997419723`: Android unit tests موفق؛ مرحله بررسی fail-closed بودن assembleRelease در نبود کلید در زمان ثبت این یادداشت هنوز `in_progress` بود؛ build debug و artifact upload هنوز انجام نشده بودند. نتیجه نهایی را تا تکمیل workflow تأیید نکن.
+- نکته سازگاری: `CD_TRUSTED_PROXY=1` به‌تنهایی دیگر برای اعتماد به XFF کافی نیست. استقرار reverse proxy باید CIDR دقیق peer را در `CD_TRUSTED_PROXY_CIDRS` تنظیم کند. بدون آن، برنامه به‌صورت امن از `REMOTE_ADDR` استفاده می‌کند.
+- PR #1 در این بازبینی باز و mergeable بود؛ main دست‌نخورده است. PRهای #2، #3 و #4 باز هستند اما API در این لحظه mergeable=false گزارش کرد؛ قبل از هر ادغام باید اختلاف base/شاخه و وابستگی‌ها دوباره بررسی و رفع شود.
+- ایرادات باز: تکمیل و تأیید Android release guard و assembleDebug روی head نهایی؛ بررسی cleartext HTTP سراسری Android و محدودسازی امن آن بدون شکستن self-hosted HTTP؛ ممیزی دقیق WebView iframe/bridge و deep links؛ بررسی rate limiter حافظه‌ای در سناریوی چند worker؛ ممیزی race و atomicity در upload/share و SSO.
+- گام بعدی: پس از ثبت این log، workflowهای جدید ناشی از commit را تا پایان دنبال کن؛ در صورت شکست، log کامل job را بخوان، اصلاح کن و دوباره اجرا کن. سپس به ممیزی Android cleartext/WebView و Cloud Drive upload/share برو.
+
+
+
+### اصلاح وضعیت CI پس از ثبت یادداشت
+- اجرای اولیه Android workflow شماره `44997419723` در مرحله `Verify release packaging fails without a private signing key` به‌علت به‌روزرسانی شاخه در حین اجرا لغو شد؛ این مورد شکست تست یا موفقیت تست نیست.
+- Job مربوطه با درخواست rerun مجدداً اجرا شد. اجرای مجدد همان SHA کد `5f842330e59b07bbb358a90c3813fad2c180e4a3` اکنون در مرحله اجرای Android unit tests است؛ هنوز نتیجه نهایی Release guard و assembleDebug ثبت نشده است.
+- Python و Windows CI روی همان SHA همچنان success قطعی هستند.
+- تا زمان تکمیل rerun، وضعیت Android را تأییدشده نهایی تلقی نکن.
+
+
+## 2026-11-22 — چرخه چهارم: هم‌زمانی آپلود/لغو و مرز تراکنش نشست
+- شاخه: `fix/security-test-integrity`
+- SHA کد اولیه چرخه: `7afcd594c77dd62de99d4d0814e8b5710df1d4f8`
+- اصلاح اول: `2df02b30ed69b804510fd393904a915535f3200f`
+  - در `cloud-drive/app/routes_files.py` عملیات `upload_chunk` و `upload_cancel` قبل از بررسی رکورد آپلود، قفل `BEGIN IMMEDIATE` می‌گیرند. این کار نوشتن فایل قطعه و تغییر metadata را با cancel/complete سریالی می‌کند.
+  - در `cloud-drive/tests/test_files.py` تست هم‌زمانی دو client مستقل اضافه شد؛ نوشتن قطعه عمداً متوقف می‌شود، cancel هم‌زمان آغاز می‌شود و انتظار می‌رود تا commit قطعه منتظر بماند؛ پس از آن رکورد و پوشه موقت باید حذف شده باشند.
+- تست اول: commit تست `6b0bb99e63c059b6140910805d2e985b497dbae2`. CI روی همین SHA کامل شد:
+  - Python security workflow `44998195947`: هر دو job `security-tests` و `windows-secret-acl` موفق؛ تمام مراحل از جمله Cloud Drive، Messenger، Gateway، تست backup Android و Windows ACL موفق.
+  - تست Cloud Drive شامل regression هم‌زمانی chunk/cancel بود و مرحله موفق گزارش شد.
+  - Android workflow `44998195951` در حین اجرای Android unit tests با commitهای بعدی لغو شد؛ نتیجه Android روی این SHA نهایی نیست.
+- بازبینی بعدی یک مورد مهم در مرز تراکنش پیدا کرد: decorator احراز هویت ممکن است وقتی نشست بیش از ۶۰ ثانیه idle بوده، `sessions.last_seen` را به‌روزرسانی کند و transaction ضمنی باز کند. اجرای مستقیم `BEGIN IMMEDIATE` در route می‌توانست در این حالت خطای «cannot start a transaction within a transaction» ایجاد کند.
+- اصلاح دوم: commit `4ebea3f8fca00a5e2c149fcd59515a0b81e66e2a`
+  - helper جدید `_begin_upload_write(db)` ابتدا transaction ضمنیِ به‌روزرسانی نشست را commit می‌کند و سپس قفل write صریح را می‌گیرد.
+  - مسیرهای upload init، chunk، complete و cancel به helper مشترک منتقل شدند.
+  - cancel اکنون حذف رکورد را پیش از پاک‌کردن پوشه staging commit می‌کند تا پاک‌سازی فایل قبل از ثبت حذف در DB انجام نشود.
+- تست دوم: commit `d246cf671f260315c605477435e7a913ed48989f`
+  - تست `test_upload_write_lock_handles_stale_session_touch` برای نشست idle اضافه شد؛ هم upload chunk و هم cancel باید پس از به‌روزرسانی last_seen موفق شوند.
+- وضعیت CI نهایی این چرخه در زمان ثبت:
+  - SHA `1a5110003f7a5798f016177c0cb37ed75700a6a4`: Python security و Windows ACL موفق، اما قبل از اصلاح helper تراکنش نشست.
+  - SHA `4ebea3f8fca00a5e2c149fcd59515a0b81e66e2a`: Python در حال اجرا/لغو احتمالی پس از push بعدی؛ نتیجه ملاک نیست.
+  - SHA `d246cf671f260315c605477435e7a913ed48989f`: Android در حال اجرا و Python در صف هنگام ثبت؛ هنوز هیچ‌کدام نتیجه نهایی محسوب نمی‌شوند.
+- ایرادات باز:
+  1. دریافت CI نهایی روی head شامل تست stale-session؛ هر شکست را از log استخراج و اصلاح کن.
+  2. تکمیل Android unit tests، Release signing guard، assembleDebug و artifact upload روی head نهایی.
+  3. ممیزی Android cleartext HTTP: `usesCleartextTraffic=true` و WebView bridge/permission/file chooser/download؛ باید طرحی سازگار با self-hosted HTTP طراحی شود که قابلیت‌های حساس روی اتصال ناامن فعال نشوند و share/cache خصوصی از طریق HTTP قابل استخراج نباشد.
+  4. RateLimiter در `cloud-drive/app/security.py` حافظه‌ای و process-local است؛ README اجرای Waitress تک‌process را توصیه می‌کند، اما پشتیبانی multi-worker باید صریحاً محدود/مستند شود یا backend مشترک اضافه شود.
+  5. ممیزی SSO، share token و دیگر raceهای فایل ادامه یابد.
+- گام بعدی: ابتدا CI روی head نهایی را کامل کن؛ سپس اصلاح HTTP/WebView را با تست‌های قابل اجرا و حفظ سازگاری بررسی کن. `main` و ادغام PRها بدون اجازه دست‌نخورده بمانند.
+
+
+## 2026-11-22 — چرخه پنجم: محدودسازی WebView و قابلیت‌های Android به HTTPS پین‌شده
+- شاخه: `fix/security-test-integrity`
+- SHA نهایی کد و مستندات این چرخه: `b2bce39ae46bc557d0f0be2ed5b2602ff5991e5e`
+- محدوده: `AndroidManifest.xml`، `MainActivity.kt`، `NativeActivity.kt`، `NotifyService.kt`، `SiteActivity.kt`، سیاست transport، مجوزهای WebView و مستندات Android.
+- یافته‌های تأییدشده:
+  1. `usesCleartextTraffic=true` برای self-hosted HTTP لازم بود، اما پل `addJavascriptInterface("WD")` و چند قابلیت native روی HTTP هم در دسترس بودند. در چنین وضعی مهاجم MITM می‌توانست JavaScript/HTML را دست‌کاری کند و در صورت دستیابی به nonce به پل native دسترسی بگیرد؛ credentialهای سرویس اعلان نیز از مسیر HTTP قابل افشا بودند.
+  2. `handlePermission()` منابع مجوز ناشناخته WebView را هم در صورت خالی بودن فهرست مجوزهای Android runtime تأیید می‌کرد؛ این رفتار fail-open بود.
+  3. Cloud Drive/Ghab درون‌برنامه‌ای و NativeActivity نیز باید مستقل از مسیر اصلی WebView، TLS را الزام کنند.
+- اصلاحات:
+  - `TransportPolicy.kt`: سیاست مشترک `allowsPrivilegedFeatures(server, pin)` اضافه شد؛ فقط HTTPS با اثر انگشت گواهی ثبت‌شده مجاز است.
+  - `MainActivity.kt`: پل JavaScript فقط روی transport مجاز اضافه می‌شود و روی HTTP حذف می‌شود؛ در HTTP اعلان، share-to-app، file chooser، دوربین/میکروفون، دانلود/پخش native و cache/share interception غیرفعال‌اند؛ توکن ذخیره‌شده native پاک می‌شود؛ قبل از استفاده HTTP هشدار صریح نمایش داده می‌شود و صفحه فقط در حالت وب محدود باز می‌شود. مسیر تغییر سرور و اولین تأیید گواهی نیز بازبینی شد تا HTTPS با pin تازه، پس از تأیید گواهی، پل را فعال کند.
+  - `NativeActivity.kt`: Native API و WebSocket فقط با HTTPS و pin معتبر اجرا می‌شوند؛ در غیر این صورت به WebView محدودشده برمی‌گردد.
+  - `NotifyService.kt`: شروع سرویس و loop اعلان هر دو HTTPS و pin را الزام می‌کنند؛ در صورت تغییر transport به حالت ناامن، سرویس متوقف و توکن native پاک می‌شود.
+  - `SiteActivity.kt`: Cloud Drive/Ghab درون‌برنامه‌ای فقط با HTTPS و pin تأییدشده باز می‌شوند.
+  - `WebPermissionPolicy.kt` و `MainActivity.kt`: allowlist بسته برای audio/video capture؛ هر resource ناشناخته یا درخواست خالی رد می‌شود و فقط resourceهای شناخته‌شده grant می‌شوند.
+  - `TransportPolicyTest.kt` و `WebPermissionPolicyTest.kt`: تست واحد برای HTTPS+pin، HTTP، pin خالی/Null و رد permission resource ناشناخته/خالی.
+  - `AndroidManifest.xml`: مجوز cleartext حفظ شد چون HTTP انتخابی کاربر هنوز برای سازگاری وب پشتیبانی می‌شود؛ توضیح XML به محل معتبر منتقل شد. این مجوز به معنی امن بودن HTTP نیست.
+  - `android/README-android.md`: رفتار و محدودیت HTTP و الزام HTTPS برای قابلیت‌های privileged مستند شد.
+- خطای کشف‌شده در CI و اصلاح:
+  - اجرای Android روی SHA `ed04accabfc4b419681c2e6ad294375f3345dda4` در `processDebugMainManifest` شکست خورد؛ علت قرار گرفتن XML comment بین attributeهای تگ `application` بود.
+  - comment به قبل از تگ `application` منتقل شد؛ SHA اصلاح Manifest: `b2bce39ae46bc557d0f0be2ed5b2602ff5991e5e`.
+- نتایج CI روی head اصلاح‌شده:
+  - Android workflow `44999107914`: موفق؛ `testDebugUnitTest` موفق، Release بدون private key عمداً و با پیام مورد انتظار fail شد (guard موفق)، `assembleDebug` موفق و artifact upload موفق.
+  - Python security workflow `44999107924`: موفق؛ JavaScript bridge syntax، Android backup policy، private-key permissions، Ghab، Cloud Drive، Messenger و Gateway موفق.
+  - Windows ACL job در همان workflow: موفق؛ owner-only ACL و Cloud Drive session-secret ACL موفق.
+  - توجه: چون secrets کلید اختصاصی در این run موجود نبودند، Release واقعی امضاشده ساخته نشد؛ این run فقط اثبات کرد بدون کلید، Release fail-closed است و Debug ساخته می‌شود.
+- بازبینی پس از اصلاح:
+  - Manifest مجدداً از GitHub خوانده شد و XML comment در محل معتبر قرار دارد.
+  - فایل‌های MainActivity، NativeActivity، NotifyService، SiteActivity، TransportPolicy و تست‌ها دوباره خوانده شدند.
+  - unit tests و تمام مراحل Android workflow روی merge ref نهایی سبز شدند؛ CI Python/Windows نیز سبز شد.
+- محدودیت باقی‌مانده:
+  - `usesCleartextTraffic=true` هنوز مجوز سراسری cleartext در سطح اپ است تا self-hosted HTTP قابل انتخاب باشد؛ در کد native مسیرهای دارای credential/قابلیت privileged به HTTPS پین‌شده محدود شده‌اند، اما خود نسخه وب HTTP همچنان در برابر شنود و دست‌کاری آسیب‌پذیر است. فقط در شبکه مورد اعتماد و با پذیرش خطر استفاده شود؛ توصیه عملی HTTPS است.
+  - این اصلاحات روی emulator یا دستگاه فیزیکی اجرا نشده‌اند؛ CI/Unit tests جایگزین تست واقعی دوربین، میکروفون، file chooser، download و lifecycle نیستند.
+  - Release امضاشده با keystore واقعی در این run آزمایش نشده است.
+- ایرادات باز / گام بعدی:
+  1. ممیزی کامل Android bridge و iframeها، intent/deep-link، exported components، storage/cookies، redirect و permission lifecycle ادامه یابد.
+  2. rate limiter process-local و پشتیبانی multi-worker در Cloud Drive تعیین تکلیف شود.
+  3. SSO/share token و upload/download raceها و atomicity بیشتر بررسی شوند.
+  4. پس از پایان هر تغییر، PRهای وابسته #2/#3/#4 از نظر base/head و CI مجدداً بررسی شوند؛ main و merge همچنان دست‌نخورده بمانند.
+
+
+## 2026-11-22 — چرخه ششم: رقابت پاک‌سازی Cloud Drive با تکمیل آپلود
+- SHA کد مبنا: `35fa46fd68ee063069bb6657231eb575a2394d6f`
+- محدوده بررسی: `cloud-drive/app/fileops.py`، `cloud-drive/app/routes_files.py`، `cloud-drive/app/db.py`، `cloud-drive/app/__init__.py`، `cloud-drive/app/security.py`، `cloud-drive/app/config.py`، `cloud-drive/app/wsgi.py`، `cloud-drive/tests/test_files.py` و `cloud-drive/README.md`.
+- یافته با شدت بالا: مسیر `upload_complete` پس از claim اتمیک، ردیف `uploads` را حذف و commit می‌کند، سپس خارج از transaction دیتابیس قطعه‌ها را assemble می‌کند. در همین بازه، `cleanup_stale_uploads` پوشه‌های staging بدون ردیف DB را بدون بررسی سن پوشه orphan فرض و حذف می‌کرد؛ housekeeping هم هر ۱۰ دقیقه اجرا می‌شود. بنابراین امکان حذف فایل‌های موقت در حین assemble و شکست تکمیل آپلود وجود داشت.
+- اصلاح:
+  - `cloud-drive/app/fileops.py`: پاک‌سازی stale uploads اکنون با `BEGIN IMMEDIATE` با chunk/cancel/complete سریالی می‌شود.
+  - پوشه staging بدون ردیف DB تنها وقتی حذف می‌شود که زمان آخرین تغییر آن از پنجره stale بیشتر باشد؛ پوشه تازه بدون ردیف می‌تواند متعلق به complete در حال اجرا باشد و حفظ می‌شود. پوشه orphan قدیمی پس از crash در نوبت بعدی پاک‌سازی خواهد شد.
+  - `cloud-drive/tests/test_files.py`: تست رگرسیون اضافه شد که وضعیت claim شدن upload را شبیه‌سازی می‌کند، حفظ پوشه تازه را بررسی می‌کند و حذف همان پوشه پس از قدیمی‌شدن را نیز می‌سنجد.
+  - `cloud-drive/README.md`: مرز RateLimiter process-local مستند شد؛ اجرای چند process/replica بدون backend مشترک مانند Redis، محدودیت نرخ توزیع‌شده محسوب نمی‌شود. entry point رسمی Waitress یک process با چند thread است.
+- بازبینی: مسیر claim در `routes_files.py` و قفل SQLite در `db.py` دوباره بررسی شد. پاک‌سازی stale-row در transaction قفل‌دار انجام می‌شود؛ پوشه claim شده و تازه در زمان assemble دیگر به‌عنوان orphan حذف نمی‌شود.
+- CI روی SHA کد `35fa46fd68ee063069bb6657231eb575a2394d6f`:
+  - Python security workflow `45001403646`: **success**؛ Cloud Drive tests، Messenger، Gateway، Ghab، backup/bridge/key checks و Windows ACL job موفق.
+  - Android workflow `45001403776`: هنگام ثبت این چرخه هنوز در حال اجرای Android unit tests بود؛ نتیجه نهایی را تا تکمیل run ثبت نکن. Release signing guard، assembleDebug و artifact upload نیز هنوز pending بودند.
+- وضعیت PR: PR #1 باز و ادغام‌نشده، mergeable؛ PRهای #2/#3/#4 همچنان باز و mergeable=false با baseهای قدیمی. هیچ‌کدام rebase یا merge نشدند تا زنجیره وابستگی بررسی شود. `main` تغییر نکرد.
+- موارد باز:
+  1. دریافت نتیجه نهایی Android workflow شماره `45001403776` و بررسی log در صورت شکست.
+  2. ممیزی lifecycle مجوزهای WebView و لغو PermissionRequest معلق هنگام navigation/activity destruction.
+  3. بررسی دقیق SSO/share replay و raceهای دیگر فایل.
+  4. تعیین تکلیف PRهای وابسته #2/#3/#4 پس از مقایسه diff و پایه‌ها.
+  5. تست دستگاه Android واقعی و Windows واقعی همچنان انجام‌نشده است.
+
+
+## 2026-11-22 — چرخه هفتم: lifecycle مجوزهای WebView و بازبینی PRهای میزبانی
+- SHA کد این چرخه: `21376f00d8421aa9de9d2b79513807e426f9410e`.
+- ممیزی `MainActivity.kt` نشان داد درخواست مجوز WebView می‌توانست هنگام باز بودن دیالوگ مجوز Android در وضعیت pending باقی بماند و پس از navigation یا نابودی Activity پاسخ داده شود. callback لغو WebView نیز پیاده‌سازی نشده بود.
+- اصلاحات:
+  - لغو و پاک‌سازی درخواست pending هنگام شروع navigation سند اصلی.
+  - پیاده‌سازی `onPermissionRequestCanceled` و لغو فقط همان درخواست.
+  - پاک‌سازی درخواست مجوز و file chooser هنگام `onDestroy`.
+  - نگهداری origin درخواست و پیش از grant نهایی، بررسی مجدد HTTPS+pin، origin درخواست، origin صفحه فعلی، زنده‌بودن Activity و مجوزهای runtime فعلی.
+  - اضافه‌شدن تست‌های policy برای رد grant در transport ناامن، origin نامعتبر/قدیمی، صفحه تغییرکرده و runtime permission ردشده.
+- CI روی SHA بالا:
+  - Python security workflow `45002128671`: **success**؛ شامل Cloud Drive، Messenger، Gateway، Ghab، bridge syntax، backup/key policy و Windows ACL.
+  - Android workflow `45002128658`: Android unit tests **success**؛ در زمان ثبت این یادداشت، مرحله بررسی fail-closed بودن Release بدون کلید خصوصی هنوز در حال اجرا بود؛ نتیجه نهایی assembleDebug و artifact هنوز تأیید نشده است.
+- ممیزی PRها:
+  - PR #2 فقط یک سند معماری peer-hosted است؛ PR #3 منطق ظرفیت عضو/آنلاین را به server اضافه می‌کند؛ PR #4 runtime آزمایشی میزبانی Android را اضافه می‌کند.
+  - هر سه PR همچنان بر پایه commitهای قدیمی از شاخه امنیتی هستند و GitHub آن‌ها را `mergeable=false` گزارش می‌کند. rebase یا تغییر base انجام نشد تا از ادغام ناخواسته و حل تعارض بدون بررسی جلوگیری شود.
+  - در PR #4 یک نقص مهم پیدا شد: `android/app/build.gradle.kts` در حالت نبود کلید release، امضای debug را به release اختصاص می‌داد. اصلاح شد تا فقط keystore کامل و متعلق به مالک release را امضا کند و taskهای `packageRelease`/`bundleRelease` بدون آن با خطای صریح fail شوند. workflow آن PR نیز negative check اضافه کرد.
+  - PR #4 commits: `156a9ea19e1b067acdc91a95f4307fa280d87642`, `26236f35a4e151fa3dc82050eacdb8e0ed362421`. متن PR به‌روزرسانی شد؛ validation این دو commit هنوز در دسترس/تأییدشده نیست.
+- وضعیت: PR #1 باز و ادغام‌نشده؛ `main` تغییر نکرد. PRهای #2 تا #4 باز و ادغام‌نشده‌اند.
+- موارد باز:
+  1. تکمیل Android workflow `45002128658` و بررسی دقیق هر خطا.
+  2. CI واقعی برای commitهای جدید PR #4؛ اجرای emulator integration test نیز هنوز انجام نشده.
+  3. بازبینی raceهای lifecycle در HostService و پایداری runtime Android روی دستگاه واقعی.
+  4. حل ancestry/conflicts و rebase PRهای #2/#3/#4 فقط پس از بررسی دقیق diff و وابستگی‌ها.
+  5. ممیزی عمیق‌تر bridge در برابر iframeهای same-origin؛ nonce در URL fragment به‌تنهایی مرز امنیتی برای iframe هم‌مبدأ نیست و نیاز به مدل threat و راهکار دقیق‌تر دارد.
+
+
+## 2026-11-22 — چرخه هشتم: تأیید CI نهایی و بازبینی مرز اعتماد WebView
+- شاخه: `fix/security-test-integrity`؛ SHA بررسی‌شده: `3c1a2ab718f3f62e4d41f3621ee5e2e546d9ca09`.
+- محدوده: نتیجه workflowهای Android و Python/Windows، پیاده‌سازی پل JavaScript در MainActivity و SiteActivity، bootstrap وب در `web/app.js`، AndroidManifest و تنظیمات امضای Release در شاخه میزبان Android.
+- نتایج واقعی CI روی head فوق:
+  - Android run `45002416771`: موفق؛ Android unit tests، guard منفی Release بدون کلید خصوصی، assembleDebug و upload artifact همگی موفق. مراحل build امضاشده Release به علت نبود secret کلید خصوصی skip شدند؛ بنابراین امضای production آزمایش نشده است.
+  - Python/security run `45002416762`: هر دو job یعنی security-tests و windows-secret-acl موفق؛ تست‌های Cloud Drive، Messenger، Gateway، Ghab، syntax bridge، backup/key policy و ACL ویندوز موفق.
+- بازبینی امنیتی جدید: `MainActivity.configureNativeBridge()` و `SiteActivity` از `addJavascriptInterface` استفاده می‌کنند؛ این API شیء را به همه frameهای WebView ارائه می‌دهد. در `web/app.js` nonce از fragment خوانده و در same-origin `sessionStorage` نگهداری می‌شود. این الگو احراز هویت per-load ایجاد می‌کند اما هویت main-frame را اثبات نمی‌کند؛ iframe هم‌مبدأ می‌تواند به sessionStorage همان origin دسترسی داشته باشد و در صورت دسترسی به nonce قادر به فراخوانی پل است. این یک ایراد باز با شدت بالا است و نباید رفع‌شده تلقی شود.
+- تصمیم اصلاحی: از تغییر شتاب‌زده‌ای که صرفاً iframeهای معمولی را با callback مسدود کند خودداری شد؛ چنین تغییری مسیرهای about:blank/srcdoc/blob و همه حالات WebView را اثباتاً پوشش نمی‌دهد. راهکار پایدار باید به APIای با کنترل صریح origin و isMainFrame (مانند AndroidX WebKit `addWebMessageListener`) مهاجرت کند یا سیاست no-frame را در سطح پاسخ‌های اصلی و همه صفحات قابل اعتماد enforce و regression-test کند. مهاجرت bridge نیازمند بازطراحی callهای sync فعلی در `web/app.js` به پروتکل async است؛ تا تکمیل آن ادعای isolation مجاز نیست.
+- بررسی Manifest: MainActivity و BootReceiver exported هستند؛ MainActivity فقط launcher و SEND/SEND_MULTIPLE دارد، NativeActivity و SiteActivity و سرویس‌های داخلی exported=false هستند. لازم است parsing کامل Intent و receiver boot و grant URI در چرخه بعد تست شود.
+- بررسی release signing در شاخه `feature/android-phone-host`: تنظیمات دیگر fallback به debug ندارند؛ CI فعلی PR #1 guard مشابه را با موفقیت اجرا کرده، اما این نتیجه به‌تنهایی اثبات اجرای همان workflow روی head مستقل PR #4 نیست.
+- PR #1 همچنان open/unmerged و mergeable است؛ main تغییر نکرده است. PR #3 open/draft و mergeable=true گزارش شد. PR #4 open/draft و mergeable=false گزارش شد؛ تا بررسی دقیق ancestry/conflict دستکاری base/rebase انجام نشد.
+- تغییرات این چرخه: فقط توضیح validation و ایراد bridge در بدنه PR #1 به‌روزرسانی شد؛ کد bridge هنوز اصلاح نشده است.
+- گام بعدی: بررسی کامل پل‌های MainActivity/SiteActivity و APIهای synchronous در JS؛ طراحی مهاجرت WebMessageListener با allowlist origin، الزام `isMainFrame`، schema پیام و پاسخ correlation-id؛ افزودن تست‌های unit/instrumentation برای رد iframe هم‌مبدأ/ناهم‌مبدأ و navigation؛ سپس CI Android و Python/Windows روی همان head.
+
+
+## 2026-11-22 — چرخه نهم: کاهش سطح حمله iframe در WebView
+- شاخه: `fix/security-test-integrity`؛ head نهایی: `def588184b6d174c67368f4a7c4abea59ae71572`.
+- یافته: پل legacy مبتنی بر `addJavascriptInterface` در همه frameهای WebView در دسترس است؛ nonce فرگمنت و `sessionStorage` هویت main-frame را اثبات نمی‌کنند. به‌جای ادعای رفع کامل، یک دفاع چندلایه بدون تغییر قرارداد sync فعلی JS اعمال شد.
+- اصلاحات:
+  - Messenger: سند اصلی `web/index.html` از قبل `frame-src 'none'` داشت؛ `MainActivity.shouldOverrideUrlLoading` اکنون تمام پیمایش‌های HTTP(S) زیرقاب را رد می‌کند، حتی اگر هم‌مبدأ باشند.
+  - SiteActivity: تمام پیمایش‌های HTTP(S) زیرقاب رد می‌شوند؛ این سیاست هم برای Cloud Drive و هم Ghab اعمال می‌شود.
+  - Cloud Drive: `X-Frame-Options: DENY` و `frame-ancestors 'none'` در همه حالت‌ها؛ برای WebView اپ با user-agent marker `WindroidaApp/1`، مقدار `frame-src 'none'` است. مرورگر عادی `frame-src 'self'` می‌گیرد تا پیش‌نمایش PDF موجود با iframe نشکند.
+  - Ghab: هدر CSP پاسخ‌ها اکنون `frame-src 'none'` را صریحاً تعیین می‌کند؛ سند اصلی از قبل meta CSP مشابه داشت و X-Frame-Options DENY/frame-ancestors none نیز برقرار بودند.
+  - توضیحات کد در سه bootstrap جاوااسکریپت اصلاح شد تا nonce به‌عنوان هویت frame معرفی نشود.
+- تست‌های افزوده/اصلاح‌شده:
+  - `tests/test_webview_bridge.js`: بررسی CSPهای Messenger/Cloud Drive/Ghab و رد subframe navigation در هر دو Activity.
+  - `cloud-drive/tests/test_security.py`: تست واقعی هدرها با user-agent مرورگر عادی (حفظ PDF preview) و `WindroidaApp/1` (منع frame).
+  - `pentest_ghab.py`: بررسی `frame-src 'none'` و `frame-ancestors 'none'` در هدر پاسخ.
+- خطای CI و اصلاح: اجرای Python run `45005875071` در تست static bridge شکست خورد، چون تست Cloud Drive مقدار literal `frame-src 'none'` می‌خواست در حالی که policy عمداً بر اساس user-agent پویا شده بود. تست به بررسی شرط user-agent و قالب policy تغییر کرد؛ هیچ شکست runtime/security در برنامه مشاهده نشد.
+- CI نهایی روی head `def588184...`:
+  - Python security workflow `45005966389`: **success**؛ Node syntax + bridge tests، Android backup/key policy، Ghab pentest، Cloud Drive tests، Messenger/Gateway security tests و Windows owner-only ACL + Cloud Drive session-secret ACL همگی موفق.
+  - Android workflow `45005966538`: **success**؛ Android unit tests موفق، guard منفی Release بدون کلید خصوصی موفق، assembleDebug و artifact upload موفق. Release امضاشده واقعی به‌دلیل نبود secret کلید مالک skip شد؛ امضای production آزمایش نشده است.
+- محدودیت امنیتی صریح: این دفاع چندلایه سطح حمله iframeهای قابل بارگذاری را می‌بندد، اما API `addJavascriptInterface` ذاتاً frame-scoped نیست. تست‌های instrumented برای `srcdoc`/`about:blank` و ماتریس نسخه‌های Android System WebView هنوز اجرا نشده‌اند. بنابراین isolation قطعی main-frame ادعا نمی‌شود؛ مهاجرت آینده به `WebViewCompat.addWebMessageListener` با allowlist دقیق origin، بررسی `isMainFrame`، schema پیام و correlation ID همچنان راه‌حل نهایی‌تر است.
+- محدودیت تست: هیچ دستگاه فیزیکی یا emulator برای بررسی دستی PDF preview، دانلود، SSO، frame injection یا رفتار نسخه‌های مختلف WebView در این چرخه در دسترس نبود.
+- PR #1 باز و ادغام‌نشده و head آن با commit فوق همگام است؛ `main` تغییر نکرده و هیچ PR ادغام نشده است.
+- گام بعدی: طراحی و پیاده‌سازی پل async مبتنی بر WebMessageListener با تست instrumentation برای same-origin iframe، `srcdoc`، `about:blank`، redirect و navigation race؛ سپس ممیزی SSO/share replay و ظرفیت میزبان در PRهای وابسته.
+
+
+## 2026-11-22 — چرخه دهم: محدودسازی رابط شبکه میزبان Android و ممیزی ظرفیت
+- PR #4 branch: `feature/android-phone-host`؛ head بررسی‌شده: `911759173a75fc688584f22c132ce9f4fde60df3`.
+- یافته امنیتی: runtime آزمایشی Android پیش‌تر TCP و HTTPS را روی `0.0.0.0` bind می‌کرد؛ این یعنی تمام رابط‌های IPv4 از جمله رابط موبایل/VPN، نه فقط LAN، listener را می‌دیدند.
+- اصلاحات PR #4:
+  - Python runtime اکنون فقط اولین IPv4 خصوصی معتبر را برای bind انتخاب می‌کند؛ در نبود آدرس معتبر فقط روی `127.0.0.1` گوش می‌دهد.
+  - گواهی فقط SANهای IPv4 خصوصی/loopback معتبر را از لیست ورودی می‌پذیرد و مقدار stale متغیر `WINDROIDA_CERT_NAMES` هنگام نبود آدرس پاک می‌شود.
+  - HostService فقط رابط‌های Wi-Fi/Wi-Fi Direct/Ethernet شناخته‌شده را برای کشف IP در نظر می‌گیرد؛ رابط‌های cellular، VPN، loopback و unknown رد می‌شوند. فقط آدرس انتخاب‌شده در UI نمایش داده می‌شود.
+  - HostActivity برای اتصال همین گوشی به میزبان، از همان آدرس bind‌شده استفاده می‌کند؛ در نبود LAN به loopback برمی‌گردد.
+  - تست Kotlin برای allowlist نام رابط‌ها و تست Python برای انتخاب private IP، رد public IP، fallback loopback، پاک‌سازی SAN stale و bind واقعی اضافه شد.
+  - workflowهای branch-specific به `feature/android-phone-host` اضافه شدند تا CI روی PRی که base آن شاخه امنیتی است نیز قابل اجرا باشد.
+- بررسی PR #3 (ظرفیت میزبان): `host_capacity.py` محدودیت ثبت‌نام را داخل `BEGIN IMMEDIATE` و lock مشترک با login اعمال می‌کند؛ `capacity_lock` ترتیب ورود/ثبت‌نام و تغییر تنظیمات را serialize می‌کند؛ نشست دوم همان کاربر slot آنلاین جدا نمی‌گیرد؛ شمارش online بر اساس کاربر یکتا و connection زنده است. ترتیب lock بررسی‌شده وارونگی آشکار ندارد. محدودیت online همچنان process-local است و برای multi-process/multi-replica backend مشترک لازم دارد. تست‌های integration ظرفیت و TLS shutdown در CI جدید اجرا شدند.
+- CI PR #4 روی head `91175917...`:
+  - Python workflow `45007706463`: **success**؛ syntax/runtime Android host، تست path/start/stop، private LAN binding، کلیدها، Ghab، Cloud Drive، host capacity، TLS shutdown، Messenger/Gateway و Windows ACLها همگی موفق.
+  - Android workflow `45007270067`: پیش از پایان `testDebugUnitTest` با commit بعدی لغو شد؛ بنابراین نتیجه Android unit tests روی این head نامشخص است. guard منفی Release و build Debug نیز اجرا نشدند.
+  - Emulator integration test فقط با `workflow_dispatch` اجرا می‌شود و هنوز اجرا نشده؛ تست دستگاه فیزیکی نیز وجود ندارد.
+- ایرادهای باز:
+  - race شروع/توقف/شروع سریع در HostService هنوز تست و رفع نشده است.
+  - اتصال بعد از تغییر IP شبکه ممکن است نیازمند توقف/شروع مجدد سرویس باشد.
+  - PR #4 همچنان از نظر ancestry با base شاخه امنیتی diverged و mergeable=false است؛ rebase/merge انجام نشد.
+- وضعیت اصلی: PR #1 باز و ادغام‌نشده است؛ `main` دست‌نخورده مانده است.

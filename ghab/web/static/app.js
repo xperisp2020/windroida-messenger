@@ -1,3 +1,14 @@
+/* Legacy SiteActivity bridge bootstrap. The document CSP denies child frames and WebViewClient rejects subframe navigation;
+   this nonce is only a per-load freshness check, not proof of main-frame identity. */
+(()=>{
+  const raw=window.WD;if(!raw)return;
+  const parts=location.hash.slice(1).split('&').filter(Boolean);
+  const part=parts.find(x=>x.startsWith('wdnonce='));let nonce=part?part.slice(8):'';
+  if(part){try{sessionStorage.setItem('__wd_site_bridge_nonce',nonce)}catch{};const clean=parts.filter(x=>!x.startsWith('wdnonce=')).join('&');try{history.replaceState(null,'',location.pathname+location.search+(clean?'#'+clean:''))}catch{}}
+  else{try{nonce=sessionStorage.getItem('__wd_site_bridge_nonce')||''}catch{}}
+  if(!/^[A-Za-z0-9_-]{40,50}$/.test(nonce)){window.WD=null;return}
+  window.WD={playVideo:(u,t)=>raw.playVideo(nonce,u,t)};
+})();
 /* ---- رویدادهای درون‌خطی بدون eval: CSP دیگر 'unsafe-inline' برای اسکریپت ندارد.
    صفت data-onXXX فقط «نامِ تابعِ خودِ برنامه + آرگومان‌های ساده» را می‌پذیرد (رشته/عدد/this/event/this.value/this.checked)؛
    تابع بومی (eval، Function، …) و هر چیز دیگری اجرا نمی‌شود. ---- */

@@ -11,7 +11,6 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLSocketFactory
 
@@ -48,13 +47,14 @@ object MediaCache {
         MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }.take(40)
 
     private fun open(url: String, range: String? = null, timeout: Int = 8000): HttpURLConnection {
+        if (!TrustedOrigin.sameOrigin(Prefs.server(app), url)) throw java.io.IOException("untrusted media origin")
         val c = URL(url).openConnection() as HttpURLConnection
         if (c is HttpsURLConnection) {
             val pin = Prefs.pin(app)
             if (sslFactory == null || pin != sslPin) { sslFactory = Trust.pinnedContext(pin).socketFactory; sslPin = pin }
             c.sslSocketFactory = sslFactory
-            c.hostnameVerifier = HostnameVerifier { _, _ -> true }
         }
+        c.instanceFollowRedirects = false
         c.connectTimeout = timeout
         c.readTimeout = 20000
         if (range != null) c.setRequestProperty("Range", range)

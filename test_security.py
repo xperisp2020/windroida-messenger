@@ -1,4 +1,4 @@
-import sys, tempfile, base64, json, ssl, urllib.request, urllib.error, time
+import sys, tempfile, base64, json, ssl, urllib.request, urllib.error, time, hmac, hashlib
 from pathlib import Path
 sys.path.insert(0,".")
 import common
@@ -15,6 +15,22 @@ A,B,M,G=cl("alice"),cl("bobby"),cl("mallory"),cl("gina")
 pc=A.call("open_private",username="bobby")["chat"]["id"]
 m1=A.call("send",chat_id=pc,text="سری: رمز وای‌فای 1234")["message"]["id"]
 f=A.call("send",chat_id=pc,text="",file={"name":"s.txt","data":base64.b64encode(b"secret"*50).decode()})["message"]["id"]
+voice_result=A.call("send",chat_id=pc,text="",file={"name":"voice.ogg","data":base64.b64encode(b"voice fixture").decode(),
+    "voice":{"dur":1.0,"wave":[1,2,3]}})
+voice_msg=voice_result["message"]["id"]
+ok("voice fixture is a voice message", bool(voice_result["message"].get("file",{}).get("voice")))
+share_from, share_to, share_text = "alice", "bobby", "persisted share replay fixture"
+share_exp, share_nonce = int(time.time()) + 60, "persisted-replay-001"
+share_body = f"share:{share_from}:{share_to}:{share_exp}:{share_nonce}:{hashlib.sha256(share_text.encode()).hexdigest()}"
+share_sig = hmac.new(S._ghab_secret.encode(), share_body.encode(), "sha256").hexdigest()
+share_req = {"from": share_from, "to": share_to, "text": share_text,
+             "exp": share_exp, "nonce": share_nonce, "sig": share_sig}
+share_first = S.ghab_share(share_req)
+restarted_server = srv.WindroidaServer("127.0.0.1", 0, db_path=tmp/"t.db", web_port=None)
+share_second = restarted_server.ghab_share(share_req)
+ok("Ghab share replay blocked after server recreation",
+   share_first[0] == 200 and share_second[0] == 400 and share_second[1].get("error") == "replay",
+   (share_first, share_second))
 grp=A.call("create_group",title="تیم",usernames=["bobby"])["chat"]["id"]
 gm=A.call("send",chat_id=grp,text="پیام گروه")["message"]["id"]
 mc=M.call("open_private",username="gina")["chat"]["id"]
@@ -24,15 +40,15 @@ for op,kw in [("history",dict(chat_id=pc)),("search_messages",dict(chat_id=pc,q=
               ("add_member",dict(chat_id=grp,username="mallory")),("remove_member",dict(chat_id=grp,user_id=B.uid)),("edit_group",dict(chat_id=grp,title="hacked")),
               ("delete_group",dict(chat_id=grp)),("leave",dict(chat_id=grp)),("invite_link",dict(chat_id=grp)),
               ("react",dict(message_id=m1,emoji="👍")),("edit",dict(message_id=m1,text="x")),("delete",dict(message_id=m1)),("get_file",dict(message_id=f)),
-              ("forward",dict(message_id=m1,chat_ids=[mc])),("voice_played",dict(message_id=f))]:
-    r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok") or op=="voice_played", r)
+              ("forward",dict(message_id=m1,chat_ids=[mc])),("voice_played",dict(message_id=voice_msg))]:
+    r=M.call(op,**kw); ok(f"outsider cannot {op}", not r.get("ok"), r)
 # reply_to cross-chat
 r=M.call("send",chat_id=mc,text="reply",reply_to=m1); ok("cross-chat reply_to doesn't leak", (not r.get("ok")) or not json.dumps(r,ensure_ascii=False).count("1234"), r)
 # member bob (non-owner) vs group admin actions
 for op,kw in [("add_member",dict(chat_id=grp,username="gina")),("remove_member",dict(chat_id=grp,user_id=A.uid)),("edit_group",dict(chat_id=grp,title="x")),("delete_group",dict(chat_id=grp)),("pin",dict(chat_id=grp,message_id=gm)),("edit",dict(message_id=gm,text="x")),("delete",dict(message_id=gm))]:
     r=B.call(op,**kw); ok(f"plain member cannot {op}", not r.get("ok"), r)
 # forward to chat I'm not in
-r=B.call("forward",message_id=m1,chat_ids=[mc]); ok("cannot forward into foreign chat", not r.get("ok") or not r.get("messages"), r)
+r=B.call("forward",message_id=m1,chat_ids=[mc]); ok("cannot forward into foreign chat", not r.get("ok"), r)
 # sessions
 sa=A.call("sessions")["sessions"][0]["id"]
 r=M.call("terminate_session",session_id=sa); ok("cannot kill others' session", not r.get("ok") , r); 
@@ -62,13 +78,13 @@ st,b=post(f"/upload?k={km}&chat_id={pc}&name=evil.txt"); ok("outsider can't uplo
 st,b=post(f"/thumb?k={km}&message_id={f}&w=10&h=10",body=b"\xff\xd8\xff"+b"0"*50); ok("outsider can't set thumb on foreign msg", b'"ok": true' not in b, b)
 # calls
 cid=A.call("call_invite",chat_id=pc)
-call_id=cid.get("call_id"); r=M.call("call_end",call_id=call_id); ok("outsider can't end others' call", not r.get("ok") or True, r)
+call_id=cid.get("call_id"); r=M.call("call_end",call_id=call_id); ok("outsider can't end others' call", not r.get("ok"), r)
 r=M.call("call_accept",call_id=call_id); ok("outsider can't accept others' call", not r.get("ok"), r)
 r=M.call("call_signal",call_id=call_id,data={"x":1}); ok("outsider can't signal others' call", not r.get("ok"), r)
 r=M.call("call_invite",chat_id=pc); ok("outsider can't call into foreign chat", not r.get("ok"), r)
 # rooms: outsider
 rm=A.call("room_open",title="x")["room"]["id"]
-r=M.call("room_join",room=rm); ok("room join w/o invite (link on) by id only", True)
+r=M.call("room_join",room=rm); ok("room join by id when public link is enabled", r.get("ok"), r)
 M.call("room_leave",room=rm)   # mallory joined while the link was on; she must leave first, else "already inside" is a normal ok
 A.call("room_ctl",room=rm,a="mode",link=False)
 r=M.call("room_join",room=rm); ok("outsider rejected from linkless room", not r.get("ok"), r)
@@ -80,3 +96,4 @@ r=M.call("update_profile",display_name="  W I N D R O I D A ",bio=""); ok("displ
 r=M.call("update_profile",display_name="مدیر",bio=""); ok("display-name 'مدیر' reserved", not r.get("ok"), r)
 r=M.call("update_profile",display_name="Mally",bio=""); ok("normal display name ok", r.get("ok"), r)
 print(sum(res),"/",len(res))
+raise SystemExit(0 if all(res) else 1)

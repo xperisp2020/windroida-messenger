@@ -24,7 +24,6 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 
 /**
@@ -39,33 +38,54 @@ class SiteActivity : Activity() {
     private lateinit var web: WebView
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var origin = ""
+    @Volatile private var bridgeNonce = InternalWebLaunch.newNonce()
     private var cache: WebCache? = null
 
-    private fun originOf(u: String): String? = try {
-        val j = URL(u)
-        val p = if (j.port == -1) j.defaultPort else j.port
-        "${j.protocol}://${j.host}:$p"
-    } catch (_: Exception) { null }
+    private fun withBridgeNonce(raw: String): String {
+        val uri = Uri.parse(raw)
+        val parts = (uri.encodedFragment ?: "").split('&').filter { it.isNotEmpty() && !it.startsWith("wdnonce=") }
+        return uri.buildUpon().encodedFragment((parts + "wdnonce=" + bridgeNonce).joinToString("&")).build().toString()
+    }
+
+    private fun hasBridgeNonce(raw: String): Boolean {
+        val fragment = Uri.parse(raw).encodedFragment ?: return false
+        return fragment.split('&').any { it == "wdnonce=" + bridgeNonce }
+    }
+
+    private fun isPinEligibleSslError(error: SslError): Boolean =
+        error.primaryError == SslError.SSL_UNTRUSTED &&
+            !error.hasError(SslError.SSL_IDMISMATCH) &&
+            !error.hasError(SslError.SSL_DATE_INVALID) &&
+            !error.hasError(SslError.SSL_EXPIRED) &&
+            !error.hasError(SslError.SSL_NOTYETVALID) &&
+            !error.hasError(SslError.SSL_INVALID)
+
+    private fun originOf(u: String): String? = TrustedOrigin.canonicalOrigin(u)
 
     /** same host (and scheme) as the Windroida server the app is set up for; the port may differ (Cloud Drive / Ghab have their own) */
     private fun sameHost(u: String): Boolean {
-        val s = Prefs.server(this)
-        return try {
-            val a = URL(s)
-            val b = URL(u)
-            s.isNotEmpty() && a.host == b.host && a.protocol == b.protocol
-        } catch (_: Exception) { false }
+        val servicePrefs = getSharedPreferences("wd", MODE_PRIVATE)
+        val servicePorts = setOf(
+            8082, // Cloud Drive default port
+            servicePrefs.getInt("drive_port", 0),
+            servicePrefs.getInt("ghab_port", 0)
+        ).filter { it in 1..65535 }.toSet()
+        return TrustedOrigin.isAllowedService(Prefs.server(this), u, servicePorts)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val url = intent.getStringExtra("url") ?: ""
-        if (url.isEmpty() || !sameHost(url)) { Toast.makeText(this, "این آدرس مجاز نیست", Toast.LENGTH_SHORT).show(); finish(); return }
-        origin = originOf(url) ?: ""
-        if (url.startsWith("https://") && Prefs.pin(this).isEmpty()) {
-            Toast.makeText(this, "اول تو صفحهٔ اصلی برنامه گواهی سرور رو تأیید کن", Toast.LENGTH_LONG).show(); finish(); return
+        val rawUrl = intent.getStringExtra("url") ?: ""
+        if (rawUrl.isEmpty() || !sameHost(rawUrl)) { Toast.makeText(this, "این آدرس مجاز نیست", Toast.LENGTH_SHORT).show(); finish(); return }
+        if (!TransportPolicy.allowsPrivilegedFeatures(Prefs.server(this), Prefs.pin(this)) ||
+            !rawUrl.startsWith("https://", ignoreCase = true)) {
+            Toast.makeText(this, "Cloud Drive و قاب درون‌برنامه‌ای فقط با HTTPS و گواهی تأییدشده فعال‌اند.", Toast.LENGTH_LONG).show()
+            finish()
+            return
         }
+        origin = originOf(rawUrl) ?: ""
+        val url = withBridgeNonce(rawUrl)
         web = WebView(this)
         setContentView(web)
         val s = web.settings
@@ -80,12 +100,28 @@ class SiteActivity : Activity() {
 
         val wc = WebCache(this, origin); cache = wc
         web.webViewClient = object : WebViewClient() {
+            // Redirects must not land a sibling or external document inside this privileged WebView.
+            override fun onPageStarted(v: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                if (originOf(url) != origin) {
+                    v.stopLoading()
+                    return
+                }
+                // Restore the per-WebView nonce if a same-origin redirect or reload dropped the fragment.
+                if (!hasBridgeNonce(url)) {
+                    v.stopLoading()
+                    v.loadUrl(withBridgeNonce(url))
+                    return
+                }
+                super.onPageStarted(v, url, favicon)
+            }
             // Ghab's photos and videos are kept on the phone (400 MB, like Instagram) and the pages work offline
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? =
                 try { wc.handle(r.url.toString(), r.method, r.requestHeaders ?: emptyMap()) } catch (_: Exception) { null }
             override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
+                if (!isPinEligibleSslError(e)) { h.cancel(); return }
                 val cert = if (Build.VERSION.SDK_INT >= 29) e.certificate.x509Certificate else null
-                if (cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
+                if (TrustedOrigin.sameOrigin(origin, e.url) &&
+                    cert != null && Prefs.pin(this@SiteActivity).isNotEmpty() && Trust.sha256(cert) == Prefs.pin(this@SiteActivity)) h.proceed()
                 else {
                     h.cancel()
                     Toast.makeText(this@SiteActivity, "گواهی با اثر انگشت تأییدشده نمی‌خونه؛ وصل نشد", Toast.LENGTH_LONG).show()
@@ -93,13 +129,27 @@ class SiteActivity : Activity() {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url.toString()
-                if (originOf(u) == origin) return false
-                // a link back to the messenger itself (e.g. Ghab's "message" button, same host/cert, just the other port):
-                // open it inside the app instead of handing a self-signed https link to the system browser.
-                if (sameHost(u)) {
+                // The privileged bridge must never be exposed to a nested browsing context.
+                // CSP frame-src 'none' is enforced by the server; this also rejects all frame navigations here.
+                if (!r.isForMainFrame) return true
+                // WebView bridge navigation is limited to HTTP(S); non-web schemes are not dispatched as Android intents.
+                if (originOf(u) == null) return true
+                if (originOf(u) == origin) {
+                    if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
+                    return false
+                }
+                // A link to the messenger's exact configured origin returns to MainActivity.
+                if (TrustedOrigin.sameOrigin(Prefs.server(this@SiteActivity), u)) {
                     val hash = u.substringAfter('#', "").ifEmpty { null }
-                    startActivity(Intent(this@SiteActivity, MainActivity::class.java).putExtra("once", true).also { if (hash != null) it.putExtra("hash", hash) })
+                    val nonce = InternalWebLaunch.issue(this@SiteActivity)
+                    startActivity(Intent(this@SiteActivity, MainActivity::class.java).putExtra("once", true)
+                        .putExtra(InternalWebLaunch.EXTRA_NONCE, nonce).also { if (hash != null) it.putExtra("hash", hash) })
                     finish(); return true
+                }
+                // A sibling service (Cloud Drive <-> Ghab) gets its own SiteActivity, not a messenger handoff.
+                if (sameHost(u)) {
+                    startActivity(Intent(this@SiteActivity, SiteActivity::class.java).putExtra("url", u))
+                    return true
                 }
                 try { startActivity(Intent(Intent.ACTION_VIEW, r.url)) } catch (_: Exception) {}
                 return true
@@ -180,7 +230,6 @@ class SiteActivity : Activity() {
                 val c = URL(url).openConnection() as HttpURLConnection
                 if (c is HttpsURLConnection) {
                     c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(this)).socketFactory
-                    c.hostnameVerifier = HostnameVerifier { _, _ -> true }   // the pinned fingerprint is what we trust
                 }
                 c.instanceFollowRedirects = false
                 c.connectTimeout = 10000
@@ -217,9 +266,13 @@ class SiteActivity : Activity() {
 
     /** the only thing the site's page may ask the app to do */
     inner class Bridge {
+        private fun valid(nonce: String?): Boolean = nonce != null &&
+            java.security.MessageDigest.isEqual(bridgeNonce.toByteArray(Charsets.UTF_8), nonce.toByteArray(Charsets.UTF_8))
+
         /** full-screen native player for a video of THIS site (same origin only; login cookie is passed along) */
         @JavascriptInterface
-        fun playVideo(url: String, title: String) {
+        fun playVideo(nonce: String, url: String, title: String) {
+            if (!valid(nonce)) return
             runOnUiThread {
                 val full = if (url.startsWith("/")) origin + url else url
                 if (originOf(full) != origin) return@runOnUiThread
@@ -229,10 +282,10 @@ class SiteActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun saveFile(url: String, name: String) { runOnUiThread { this@SiteActivity.saveFile(url, name, null) } }
+        fun saveFile(nonce: String, url: String, name: String) { if (valid(nonce)) runOnUiThread { this@SiteActivity.saveFile(url, name, null) } }
 
         /** same, but the page gets live progress through window.wdDl(id, got, total, state) and draws its own download box */
         @JavascriptInterface
-        fun saveFileId(id: String, url: String, name: String) { runOnUiThread { this@SiteActivity.saveFile(url, name, id) } }
+        fun saveFileId(nonce: String, id: String, url: String, name: String) { if (valid(nonce)) runOnUiThread { this@SiteActivity.saveFile(url, name, id) } }
     }
 }

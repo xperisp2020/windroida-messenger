@@ -1,4 +1,5 @@
 import os
+import threading
 
 from .helpers import Base
 
@@ -43,6 +44,94 @@ class FileTests(Base):
         r = self.call(c, "post", "/api/uploads/%s/complete" % uid)
         self.assertEqual(r.status_code, 201)
         self.assertEqual(c.get("/api/files/%d/download" % r.get_json()["id"]).data, data)
+
+
+    def test_upload_chunk_and_cancel_are_serialized(self):
+        from app import db as dbm
+        c = self.register()
+        cancel_client = self.new_client()
+        login = cancel_client.post("/api/login", json={"username": "alice", "password": "Str0ng-pass-123"})
+        self.assertEqual(login.status_code, 200, login.get_json())
+        cancel_client.csrf = login.get_json()["csrf"]
+        uid = self.call(c, "post", "/api/uploads", json={"name": "race.bin", "size": 1024}).get_json()["upload_id"]
+
+        entered_write = threading.Event()
+        release_write = threading.Event()
+        cancel_done = threading.Event()
+        outcomes = {}
+        original_write = self.app.storage.write_chunk
+
+        def blocked_write(upload_id, idx, data):
+            entered_write.set()
+            if not release_write.wait(5):
+                raise TimeoutError("test did not release blocked chunk write")
+            return original_write(upload_id, idx, data)
+
+        self.app.storage.write_chunk = blocked_write
+        try:
+            def put_chunk():
+                try:
+                    outcomes["chunk"] = self.call(
+                        c, "put", "/api/uploads/%s/chunks/0" % uid,
+                        data=b"x" * 1024, content_type="application/octet-stream"
+                    ).status_code
+                except Exception as exc:
+                    outcomes["chunk_error"] = repr(exc)
+
+            def cancel_upload():
+                try:
+                    outcomes["cancel"] = self.call(cancel_client, "delete", "/api/uploads/" + uid).status_code
+                except Exception as exc:
+                    outcomes["cancel_error"] = repr(exc)
+                finally:
+                    cancel_done.set()
+
+            chunk_thread = threading.Thread(target=put_chunk)
+            chunk_thread.start()
+            self.assertTrue(entered_write.wait(3), "chunk write did not start")
+            cancel_thread = threading.Thread(target=cancel_upload)
+            cancel_thread.start()
+            self.assertFalse(cancel_done.wait(0.2), "cancel must wait for the in-flight chunk transaction")
+            release_write.set()
+            chunk_thread.join(5)
+            cancel_thread.join(5)
+            self.assertFalse(chunk_thread.is_alive())
+            self.assertFalse(cancel_thread.is_alive())
+        finally:
+            release_write.set()
+            self.app.storage.write_chunk = original_write
+
+        self.assertEqual(outcomes.get("chunk"), 200, outcomes)
+        self.assertEqual(outcomes.get("cancel"), 200, outcomes)
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        try:
+            self.assertIsNone(conn.execute("SELECT 1 FROM uploads WHERE id=?", (uid,)).fetchone())
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM upload_chunks WHERE upload_id=?", (uid,)).fetchone()[0], 0)
+        finally:
+            conn.close()
+        self.assertNotIn(uid, self.app.storage.list_upload_dirs())
+
+
+    def test_upload_write_lock_handles_stale_session_touch(self):
+        from app import db as dbm
+        c = self.register()
+        uid = self.call(c, "post", "/api/uploads", json={"name": "stale.bin", "size": 1024}).get_json()["upload_id"]
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        conn.execute("UPDATE sessions SET last_seen='2000-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+
+        chunk = self.call(c, "put", "/api/uploads/%s/chunks/0" % uid,
+                          data=b"x" * 1024, content_type="application/octet-stream")
+        self.assertEqual(chunk.status_code, 200, chunk.get_json())
+
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        conn.execute("UPDATE sessions SET last_seen='2000-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+        cancelled = self.call(c, "delete", "/api/uploads/" + uid)
+        self.assertEqual(cancelled.status_code, 200, cancelled.get_json())
+        self.assertNotIn(uid, self.app.storage.list_upload_dirs())
 
     def test_wrong_chunk_size_rejected(self):
         c = self.register()
@@ -153,6 +242,31 @@ class FileTests(Base):
         conn.commit()
         self.assertEqual(cleanup_stale_uploads(conn, self.app.storage, 24), 1)
         self.assertEqual(self.app.storage.list_upload_dirs(), [])
+
+    def test_housekeeping_preserves_recent_orphan_claimed_for_assembly(self):
+        import os
+        import time
+        from app import db as dbm
+        from app.fileops import cleanup_stale_uploads
+        c = self.register()
+        uid = self.call(c, "post", "/api/uploads", json={"name": "assembling.bin", "size": 1024}).get_json()["upload_id"]
+        self.call(c, "put", "/api/uploads/%s/chunks/0" % uid, data=b"x" * 1024)
+        # Simulate /complete having atomically claimed the upload row, while its
+        # staging directory is still being assembled outside the SQLite transaction.
+        conn = dbm.connect(self.app.config["DB_PATH"])
+        conn.execute("DELETE FROM uploads WHERE id=?", (uid,))
+        conn.commit()
+        staged = self.app.storage._upload_dir(uid)
+        self.assertTrue(staged.is_dir())
+        self.assertEqual(cleanup_stale_uploads(conn, self.app.storage, 24), 0)
+        self.assertTrue(staged.is_dir(), "housekeeping must not remove a fresh directory owned by /complete")
+        # Once the unreferenced directory is older than the stale-upload window,
+        # the next pass may safely reclaim it (e.g. after a crashed completion).
+        old = time.time() - 25 * 3600
+        os.utime(staged, (old, old))
+        self.assertEqual(cleanup_stale_uploads(conn, self.app.storage, 24), 0)
+        self.assertFalse(staged.exists())
+        conn.close()
 
 
 class RetentionTests(Base):

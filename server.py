@@ -17,6 +17,8 @@ import ssl
 import subprocess
 import sys
 import shutil
+import stat
+import tempfile
 import threading
 import time
 import uuid
@@ -77,6 +79,64 @@ def _fsync_file(p):
         pass
 
 
+def _restrict_private_file(path):
+    """Restrict an existing secret before it is read; fail closed on POSIX and Windows."""
+    path = Path(path)
+    if path.is_symlink():
+        raise PermissionError(f"refusing symlink for private file: {path}")
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode != 0o600:
+            raise PermissionError(f"private file permissions are {mode:o}, expected 600: {path}")
+    elif os.name == "nt":
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip()
+        subprocess.run(["icacls", str(path), "/reset"], check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["icacls", str(path), "/inheritance:r", "/grant:r", f"{account}:(F)"],
+            check=True, capture_output=True, text=True
+        )
+
+
+def _write_private_bytes(path, data):
+    """Atomically replace a private key/secret; the temporary file is private before any secret bytes are written."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        elif os.name == "nt":
+            _restrict_private_file(tmp_name)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.name == "posix" and stat.S_IMODE(os.stat(tmp_name).st_mode) != 0o600:
+            raise PermissionError(f"temporary private file is not mode 600: {tmp_name}")
+        os.replace(tmp_name, path)
+        _restrict_private_file(path)
+        if os.name == "posix":
+            try:
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def _atomic_write(path, text):
     """write -> flush to disk -> rename: a power cut leaves either the old file or the new one, never half of it"""
     tmp = path.with_name(path.name + ".tmp")
@@ -88,17 +148,15 @@ def _atomic_write(path, text):
 
 
 def _atomic_copy(src, dst):
+    if dst.name.endswith(".key"):
+        _write_private_bytes(dst, Path(src).read_bytes())
+        return
     tmp = dst.with_name(dst.name + ".tmp")
     with open(src, "rb") as a, open(tmp, "wb") as b:
         b.write(a.read())
         b.flush()
         os.fsync(b.fileno())
     os.replace(tmp, dst)
-    try:
-        if dst.name.endswith(".key"):
-            os.chmod(dst, 0o600)
-    except OSError:
-        pass
 
 
 _LOG_LOCK = threading.Lock()
@@ -355,6 +413,7 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             ctx.num_tickets = 0        # no TLS 1.3 session tickets: they are written right after the handshake, racing with the
         except (AttributeError, ValueError):   # first request on the same socket (rare stalls seen in tests)
             pass
+        _restrict_private_file(key)
         ctx.load_cert_chain(str(crt), str(key))
         return ctx
 
@@ -435,8 +494,8 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                                                  crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
                     .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
                     .sign(k, hashes.SHA256()))
-            key.write_bytes(k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
-                                            serialization.NoEncryption()))
+            _write_private_bytes(key, k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                                       serialization.NoEncryption()))
             crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
             return True
         except Exception as e:
@@ -454,11 +513,17 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
             except ValueError:
                 san.append(f"DNS:{n}")
         try:
-            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key),
-                            "-out", str(crt), "-days", "3650", "-subj", "/CN=Windroida",
-                            "-addext", "subjectAltName=" + ",".join(san),
-                            "-addext", "basicConstraints=critical,CA:TRUE",
-                            "-addext", "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign"], check=True, capture_output=True)
+            old_umask = os.umask(0o077) if os.name == "posix" else None
+            try:
+                subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key),
+                                "-out", str(crt), "-days", "3650", "-subj", "/CN=Windroida",
+                                "-addext", "subjectAltName=" + ",".join(san),
+                                "-addext", "basicConstraints=critical,CA:TRUE",
+                                "-addext", "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign"], check=True, capture_output=True)
+            finally:
+                if old_umask is not None:
+                    os.umask(old_umask)
+            _restrict_private_file(key)
             return True
         except (OSError, subprocess.CalledProcessError):
             return False
@@ -874,9 +939,10 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
                 if generated:
                     try:
                         pf = Path(self.db_path).parent / "admin_password.txt"
-                        pf.write_text("username: %s\npassword: %s\n" % (ADMIN_USER, pw), encoding="utf-8")
-                        try: os.chmod(pf, 0o600)
-                        except Exception: pass
+                        _write_private_bytes(
+                            pf,
+                            ("username: %s\npassword: %s\n" % (ADMIN_USER, pw)).encode("utf-8"),
+                        )
                     except Exception:
                         pass
                     print("\n  ==> Admin account created.  username: %s   password: %s\n      (saved in data/admin_password.txt - change it in Profile -> Change password, then delete the file)\n" % (ADMIN_USER, pw), flush=True)
@@ -2306,19 +2372,13 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
     # ----------------------------------------------------- media access keys
     def _load_secret(self):
         path = Path(self.db_path).parent / "secret.key"
-        try:
+        if path.exists():
+            _restrict_private_file(path)
             data = path.read_bytes()
             if len(data) >= 32:
                 return data
-        except OSError:
-            pass
         data = os.urandom(32)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+        _write_private_bytes(path, data)
         return data
 
     DRIVE_TOKEN_TTL = 60   # seconds a "open my cloud drive" link stays valid (one-time; see cloud-drive/app/routes_sso.py)
@@ -2328,19 +2388,13 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         password. Written as hex text so it's easy to paste into cloud-drive/.env as CD_SSO_SECRET. Nobody else can
         mint a valid token without this exact value, so it must never be copied anywhere but that one file."""
         path = Path(self.db_path).parent / fname
-        try:
+        if path.exists():
+            _restrict_private_file(path)
             data = path.read_text(encoding="utf-8").strip()
             if len(data) >= 32:
                 return data
-        except OSError:
-            pass
         data = secrets.token_hex(32)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(data, encoding="utf-8")
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+        _write_private_bytes(path, data.encode("utf-8"))
         return data
 
     def op_drive_token(self, conn, req):
@@ -2391,16 +2445,16 @@ class WindroidaServer(RoomsMixin, SocialMixin, GamesMixin, MafiaMixin, MenschMix
         t = now()
         if exp < t or exp > t + 120:
             return 400, {"ok": False, "error": "expired"}
-        used = self.__dict__.setdefault("_ghab_share_used", {})
-        lock = self.__dict__.setdefault("_ghab_share_lock", threading.Lock())
-        with lock:
-            for k in [k for k, v in used.items() if v < t]:
-                del used[k]
-            if sig in used:
-                return 400, {"ok": False, "error": "replay"}
-            used[sig] = exp + 5
         db = connect_db(self.db_path)
         try:
+            # The unique database key makes replay rejection survive restarts and multiple workers.
+            db.execute("DELETE FROM ghab_share_used WHERE expires < ?", (t,))
+            try:
+                db.execute("INSERT INTO ghab_share_used(signature, expires) VALUES(?,?)", (sig, exp + 5))
+                db.commit()
+            except sqlite3.IntegrityError:
+                db.rollback()
+                return 400, {"ok": False, "error": "replay"}
             a = db.execute("SELECT id FROM users WHERE username=? AND banned=0", (frm,)).fetchone()
             b = db.execute("SELECT id FROM users WHERE username=? AND banned=0", (to,)).fetchone()
             if not a or not b:

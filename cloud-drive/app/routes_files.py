@@ -289,6 +289,14 @@ def purge():
 
 
 # ------------------------------------------------------------ chunked / resumable upload
+def _begin_upload_write(db):
+    # Authentication may have updated the session's last_seen timestamp.
+    # Commit that small touch before opening the upload's explicit write lock.
+    if db.in_transaction:
+        db.commit()
+    db.execute("BEGIN IMMEDIATE")
+
+
 def _upload_row(db, upload_id, uid):
     r = db.execute("SELECT * FROM uploads WHERE id=? AND owner_id=?", (upload_id, uid)).fetchone()
     if not r:
@@ -317,7 +325,7 @@ def upload_init():
              max_bytes=max_up)
     folder = d.get("folder_id")
     _own_folder(db, folder, u["id"])
-    db.execute("BEGIN IMMEDIATE")  # take the write lock BEFORE reading usage, so parallel inits cannot all pass the quota check
+    _begin_upload_write(db)  # lock BEFORE reading usage, so parallel inits cannot all pass the quota check
     if used_bytes(db, u["id"]) + reserved_bytes(db, u["id"]) + size > u["quota_bytes"]:
         fail("quota_exceeded", "فضای ذخیره‌سازی شما کافی نیست", "Storage quota exceeded", 413)
     if size > current_app.storage.free_bytes() - 50 * 1024 * 1024:
@@ -341,6 +349,9 @@ def upload_status(upload_id):
 @login_required
 def upload_chunk(upload_id, idx):
     db = get_db()
+    # Serialize the filesystem write with cancel/complete. The SQLite write lock
+    # is held until after_request commits the chunk metadata.
+    _begin_upload_write(db)
     r = _upload_row(db, upload_id, current_user()["id"])
     if idx < 0 or idx >= r["total_chunks"]:
         fail("bad_chunk", "شماره قطعه نامعتبر است", "Invalid chunk index", 400)
@@ -370,7 +381,7 @@ def _scan_ok(path):
 @login_required
 def upload_complete(upload_id):
     db, u = get_db(), current_user()
-    db.execute("BEGIN IMMEDIATE")
+    _begin_upload_write(db)
     r = _upload_row(db, upload_id, u["id"])
     got = {x["idx"] for x in db.execute("SELECT idx FROM upload_chunks WHERE upload_id=?", (upload_id,))}
     if got != set(range(r["total_chunks"])):
@@ -417,7 +428,9 @@ def upload_complete(upload_id):
 @login_required
 def upload_cancel(upload_id):
     db = get_db()
+    _begin_upload_write(db)
     _upload_row(db, upload_id, current_user()["id"])
     db.execute("DELETE FROM uploads WHERE id=?", (upload_id,))
+    db.commit()
     current_app.storage.drop_upload(upload_id)
     return jsonify(ok=True)

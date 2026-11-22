@@ -1,17 +1,21 @@
 """Single sign-on bridge (Windroida -> Cloud Drive): signature checks, replay, provisioning, access control."""
 import hashlib
+import os
+import stat
+import subprocess
 import hmac
 import shutil
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 from app import create_app
 from app import db as dbm
 
 
 class SsoBase(unittest.TestCase):
-    secret = "test-sso-secret-not-real"
+    secret = "test-sso-secret-not-real-0123456789-abcdef"
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -35,6 +39,63 @@ class SsoBase(unittest.TestCase):
 
 
 class TestSso(SsoBase):
+    def test_weak_configured_session_secret_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                create_app(DATA_DIR=tmp, TESTING=True, HOUSEKEEPING=False, SECRET_KEY="weak-secret")
+
+    def test_weak_configured_sso_secret_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                create_app(DATA_DIR=tmp, TESTING=True, HOUSEKEEPING=False, SSO_SECRET="weak-sso-secret")
+
+    @unittest.skipUnless(os.name == "nt", "Windows ACL check runs only on Windows")
+    def test_session_secret_windows_acl_is_owner_only(self):
+        from app import _resolve_secret
+        path = Path(self.tmp) / "secret.key"
+        saved = self.app.config["SECRET_KEY"]
+        self.app.config["SECRET_KEY"] = None
+        try:
+            _resolve_secret(self.app)
+        finally:
+            self.app.config["SECRET_KEY"] = saved
+        account = subprocess.run(["whoami"], check=True, capture_output=True, text=True).stdout.strip().lower()
+        acl = subprocess.run(["icacls", str(path)], check=True, capture_output=True, text=True).stdout.lower()
+        self.assertIn(account, acl)
+        self.assertIn("(f)", acl)
+        for principal in ("everyone", "authenticated users", "builtin\\users", "builtin\\administrators"):
+            self.assertNotIn(principal, acl)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced the same way on Windows")
+    def test_session_secret_is_owner_only_and_existing_permissions_are_repaired(self):
+        from app import _resolve_secret
+        path = Path(self.tmp) / "secret.key"
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        path.chmod(0o644)
+        saved = self.app.config["SECRET_KEY"]
+        self.app.config["SECRET_KEY"] = None
+        try:
+            self.assertEqual(_resolve_secret(self.app), saved)
+        finally:
+            self.app.config["SECRET_KEY"] = saved
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    @unittest.skipIf(os.name == "nt", "symlink creation requires platform-specific Windows privileges")
+    def test_session_secret_symlink_is_rejected(self):
+        from app import _resolve_secret
+        path = Path(self.tmp) / "secret.key"
+        target = Path(self.tmp) / "unrelated.key"
+        path.unlink()
+        target.write_text("unrelated secret material", encoding="utf-8")
+        path.symlink_to(target)
+        saved = self.app.config["SECRET_KEY"]
+        self.app.config["SECRET_KEY"] = None
+        try:
+            with self.assertRaises(PermissionError):
+                _resolve_secret(self.app)
+        finally:
+            self.app.config["SECRET_KEY"] = saved
+
     def test_valid_token_logs_in_and_creates_account(self):
         r = self.client.get("/sso?t=" + self.token("alice"), follow_redirects=False)
         self.assertEqual(r.status_code, 302)
@@ -77,11 +138,30 @@ class TestSso(SsoBase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.get_json()["error"], "expired")
 
-    def test_token_cannot_be_replayed(self):
+    def test_sso_username_must_match_windroida_username_rules(self):
+        r = self.client.get("/sso?t=" + self.token("bad!name"))
+        self.assertEqual(r.status_code, 400)
+
+    def test_sso_cannot_enter_existing_cloud_drive_admin_account(self):
+        c = dbm.connect(self.app.config["DB_PATH"])
+        c.execute(
+            "INSERT INTO users(username,email,display_name,password_hash,role,quota_bytes,created_at) "
+            "VALUES(?,?,?,?,?,?,?)",
+            ("windroida_admin", "", "Admin", "not-used-by-this-test", "admin", 1024, "2026-01-01T00:00:00Z"))
+        c.commit()
+        c.close()
+        r = self.client.get("/sso?t=" + self.token("windroida_admin"))
+        self.assertEqual(r.status_code, 403)
+        self.assertIsNone(self.client.get("/api/me").get_json().get("user"))
+
+    def test_token_cannot_be_replayed_after_app_recreation(self):
         tok = self.token("grace")
         r1 = self.client.get("/sso?t=" + tok)
         self.assertEqual(r1.status_code, 302)
-        c2 = self.app.test_client()
+        # A new app instance shares only the persistent database, not process-local replay state.
+        restarted = create_app(DATA_DIR=self.tmp, TESTING=True, HOUSEKEEPING=False, SCRYPT_N=1024,
+                               SSO_SECRET=self.secret)
+        c2 = restarted.test_client()
         r2 = c2.get("/sso?t=" + tok)
         self.assertEqual(r2.status_code, 400)
         self.assertEqual(r2.get_json()["error"], "bad_token")

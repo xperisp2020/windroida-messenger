@@ -28,7 +28,13 @@ class NotifyService : Service() {
         const val CH_SVC = "svc"
         const val CH_MSG = "msg"
         fun start(c: Context) {
-            if (Prefs.token(c).isEmpty() || Prefs.server(c).isEmpty()) return
+            val server = Prefs.server(c)
+            if (!TransportPolicy.allowsPrivilegedFeatures(server, Prefs.pin(c))) {
+                Prefs.setToken(c, "")
+                stop(c)
+                return
+            }
+            if (Prefs.token(c).isEmpty()) return
             ContextCompat.startForegroundService(c, Intent(c, NotifyService::class.java))
         }
         fun stop(c: Context) { c.stopService(Intent(c, NotifyService::class.java)) }
@@ -117,7 +123,14 @@ class NotifyService : Service() {
             val server = Prefs.server(this)
             val token = Prefs.token(this)
             val pin = Prefs.pin(this)
-            if (server.isEmpty() || token.isEmpty() || (server.startsWith("https") && pin.isEmpty())) {
+            if (!TransportPolicy.allowsPrivilegedFeatures(server, pin)) {
+                // A server switch to HTTP must never carry a stored session token over cleartext.
+                Prefs.setToken(this, "")
+                running = false
+                stopSelf()
+                return
+            }
+            if (token.isEmpty()) {
                 sleep(5000); continue
             }
             try {
@@ -149,9 +162,9 @@ class NotifyService : Service() {
         try {
             if (c is HttpsURLConnection) {
                 c.sslSocketFactory = Trust.pinnedContext(pin).socketFactory
-                c.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }   // the pinned fingerprint is what we trust
             }
             c.requestMethod = "POST"
+            c.instanceFollowRedirects = false
             c.connectTimeout = 10000
             c.readTimeout = 45000
             c.doOutput = true
@@ -172,9 +185,11 @@ class NotifyService : Service() {
         if (App.foreground) return                  // you are looking at the app: it plays its own sound
         val chat = o.optInt("chat_id")
         val isCall = o.optBoolean("call")
-        val open = Intent(this, if (Prefs.mode(this) == "web") MainActivity::class.java else NativeActivity::class.java)
+        val webMode = Prefs.mode(this) == "web"
+        val open = Intent(this, if (webMode) MainActivity::class.java else NativeActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra("chat", chat)
+        if (webMode) open.putExtra(InternalWebLaunch.EXTRA_NONCE, InternalWebLaunch.issue(this))
         val pi = PendingIntent.getActivity(this, chat, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(this, CH_MSG)
             .setSmallIcon(android.R.drawable.stat_notify_chat)

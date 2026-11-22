@@ -129,3 +129,59 @@ class AdminTests(Base):
         self.assertEqual(self.client.get("/api/config").get_json()["service_name"], "My Drive")
         h = admin.get("/api/admin/health").get_json()
         self.assertTrue(h["database"] and h["storage"])
+
+
+class TrustedProxyAddressTests(Base):
+    def _resolved_ip(self, remote, forwarded, trusted=True, cidrs=None):
+        from app.security import client_ip
+        self.app.config["TRUSTED_PROXY"] = trusted
+        self.app.config["TRUSTED_PROXY_CIDRS"] = cidrs or []
+        headers = {"X-Forwarded-For": forwarded} if forwarded is not None else {}
+        with self.app.test_request_context("/", environ_base={"REMOTE_ADDR": remote}, headers=headers):
+            return client_ip()
+
+    def test_forwarded_header_is_ignored_without_explicit_proxy_networks(self):
+        self.assertEqual(
+            self._resolved_ip("127.0.0.1", "198.51.100.77", cidrs=[]),
+            "127.0.0.1",
+        )
+
+    def test_forwarded_header_is_ignored_when_direct_peer_is_untrusted(self):
+        self.assertEqual(
+            self._resolved_ip("203.0.113.9", "198.51.100.77", cidrs=["127.0.0.1/32"]),
+            "203.0.113.9",
+        )
+
+    def test_trusted_proxy_chain_resolves_first_untrusted_hop(self):
+        self.assertEqual(
+            self._resolved_ip(
+                "127.0.0.1", "198.51.100.77, 10.0.0.8",
+                cidrs=["127.0.0.1/32", "10.0.0.0/8"],
+            ),
+            "198.51.100.77",
+        )
+
+    def test_malformed_forwarded_chain_falls_back_to_socket_peer(self):
+        self.assertEqual(
+            self._resolved_ip("127.0.0.1", "not-an-ip, 10.0.0.8", cidrs=["127.0.0.1/32", "10.0.0.0/8"]),
+            "127.0.0.1",
+        )
+
+    def test_forwarded_chain_with_too_many_hops_falls_back(self):
+        self.assertEqual(
+            self._resolved_ip("127.0.0.1", ", ".join(["10.0.0.1"] * 33), cidrs=["127.0.0.1/32", "10.0.0.0/8"]),
+            "127.0.0.1",
+        )
+
+    def test_security_headers_isolate_android_webview_frames(self):
+        browser = self.new_client().get("/")
+        browser_csp = browser.headers.get("Content-Security-Policy", "")
+        self.assertIn("frame-src 'self'", browser_csp)  # browser PDF preview remains available
+        self.assertIn("frame-ancestors 'none'", browser_csp)
+        self.assertEqual(browser.headers.get("X-Frame-Options"), "DENY")
+
+        android = self.new_client().get("/", headers={"User-Agent": "WindroidaApp/1"})
+        android_csp = android.headers.get("Content-Security-Policy", "")
+        self.assertIn("frame-src 'none'", android_csp)
+        self.assertIn("frame-ancestors 'none'", android_csp)
+        self.assertEqual(android.headers.get("X-Frame-Options"), "DENY")

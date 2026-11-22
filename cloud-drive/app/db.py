@@ -68,6 +68,13 @@ CREATE TABLE events(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   level TEXT NOT NULL, kind TEXT NOT NULL, message TEXT, ip TEXT, created_at TEXT NOT NULL);
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+""",
+    """
+CREATE TABLE sso_used(
+  signature TEXT PRIMARY KEY,
+  expires REAL NOT NULL
+);
+CREATE INDEX ix_sso_used_expires ON sso_used(expires);
 """
 ]
 

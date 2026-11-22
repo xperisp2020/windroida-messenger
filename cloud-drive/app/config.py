@@ -1,4 +1,5 @@
 """Configuration. Everything comes from environment variables (or a .env file next to the project)."""
+import ipaddress
 import os
 from pathlib import Path
 
@@ -52,7 +53,25 @@ def load_config(**overrides):
         TESTING=False,
         HOUSEKEEPING=True,
     )
+    raw_proxy_cidrs = os.environ.get("CD_TRUSTED_PROXY_CIDRS", "")
+    try:
+        proxy_cidrs = [str(ipaddress.ip_network(item.strip(), strict=False))
+                       for item in raw_proxy_cidrs.split(",") if item.strip()]
+    except ValueError as exc:
+        raise RuntimeError("CD_TRUSTED_PROXY_CIDRS contains an invalid IP network") from exc
+    cfg["TRUSTED_PROXY_CIDRS"] = proxy_cidrs
     cfg.update(overrides)
+    # Validate explicit overrides as well; never silently accept a malformed trust boundary.
+    try:
+        cfg["TRUSTED_PROXY_CIDRS"] = [
+            str(ipaddress.ip_network(item, strict=False))
+            for item in cfg.get("TRUSTED_PROXY_CIDRS", [])
+        ]
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("TRUSTED_PROXY_CIDRS must be a list of valid IP networks") from exc
+    sso_secret = cfg.get("SSO_SECRET") or ""
+    if sso_secret and len(str(sso_secret).encode("utf-8")) < 32:
+        raise RuntimeError("CD_SSO_SECRET must contain at least 32 bytes of secret material")
     for k in ("UPLOAD_DIR", "TMP_DIR", "LOG_DIR", "DB_PATH"):
         if k not in overrides:
             base = Path(cfg["DATA_DIR"]).resolve()

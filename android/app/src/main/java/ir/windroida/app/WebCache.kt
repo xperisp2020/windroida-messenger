@@ -11,7 +11,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 
 /**
@@ -35,7 +34,7 @@ class WebCache(private val ctx: Context, private val origin: String) {
 
     /** null = let the WebView handle the request itself */
     fun handle(url: String, method: String, reqHeaders: Map<String, String>): WebResourceResponse? {
-        if (method != "GET" || !url.startsWith(origin)) return null
+        if (method != "GET" || !TrustedOrigin.sameOrigin(origin, url)) return null
         val path = try { URL(url).path ?: "/" } catch (_: Exception) { return null }
         if (path.startsWith("/sso") || path.startsWith("/logout") || path.startsWith("/api/reels/watch")) return null
         val media = isMedia(path)
@@ -94,7 +93,6 @@ class WebCache(private val ctx: Context, private val origin: String) {
         val c = URL(url).openConnection() as HttpURLConnection
         if (c is HttpsURLConnection) {
             c.sslSocketFactory = Trust.pinnedContext(Prefs.pin(ctx)).socketFactory
-            c.hostnameVerifier = HostnameVerifier { _, _ -> true }          // identity = the pinned fingerprint
         }
         c.instanceFollowRedirects = false
         c.connectTimeout = 8000; c.readTimeout = 30000
