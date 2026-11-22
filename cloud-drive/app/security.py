@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import threading
@@ -89,11 +90,45 @@ class RateLimiter:
 
 
 def client_ip():
-    if current_app.config.get("TRUSTED_PROXY"):
-        xff = request.headers.get("X-Forwarded-For", "")
-        if xff:
-            return xff.split(",")[0].strip()[:64]
-    return (request.remote_addr or "?")[:64]
+    """Resolve the client address only through explicitly trusted proxy networks.
+
+    X-Forwarded-For is attacker-controlled unless the immediate peer is trusted.
+    Walk the chain from right to left and stop at the first untrusted hop.
+    """
+    remote = (request.remote_addr or "?").strip()
+    if not current_app.config.get("TRUSTED_PROXY"):
+        return remote[:64]
+    networks = current_app.config.get("TRUSTED_PROXY_CIDRS") or ()
+    if not networks or remote == "?":
+        return remote[:64]
+    try:
+        peer = ipaddress.ip_address(remote)
+        trusted = [ipaddress.ip_network(value, strict=False) for value in networks]
+    except ValueError:
+        return remote[:64]
+
+    def is_trusted(address):
+        return any(address.version == network.version and address in network for network in trusted)
+
+    if not is_trusted(peer):
+        return remote[:64]
+
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if not forwarded:
+        return remote[:64]
+    try:
+        chain = [ipaddress.ip_address(part.strip()) for part in forwarded.split(",")]
+    except ValueError:
+        return remote[:64]
+    if not chain or len(chain) > 32:
+        return remote[:64]
+
+    client = peer
+    for hop in reversed(chain):
+        if not is_trusted(client):
+            break
+        client = hop
+    return str(client)[:64]
 
 
 def limit_or_429(key, limit, window, kind=None):
