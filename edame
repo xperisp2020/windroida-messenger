@@ -257,3 +257,18 @@
   3. بازبینی raceهای lifecycle در HostService و پایداری runtime Android روی دستگاه واقعی.
   4. حل ancestry/conflicts و rebase PRهای #2/#3/#4 فقط پس از بررسی دقیق diff و وابستگی‌ها.
   5. ممیزی عمیق‌تر bridge در برابر iframeهای same-origin؛ nonce در URL fragment به‌تنهایی مرز امنیتی برای iframe هم‌مبدأ نیست و نیاز به مدل threat و راهکار دقیق‌تر دارد.
+
+
+## 2026-11-22 — چرخه هشتم: تأیید CI نهایی و بازبینی مرز اعتماد WebView
+- شاخه: `fix/security-test-integrity`؛ SHA بررسی‌شده: `3c1a2ab718f3f62e4d41f3621ee5e2e546d9ca09`.
+- محدوده: نتیجه workflowهای Android و Python/Windows، پیاده‌سازی پل JavaScript در MainActivity و SiteActivity، bootstrap وب در `web/app.js`، AndroidManifest و تنظیمات امضای Release در شاخه میزبان Android.
+- نتایج واقعی CI روی head فوق:
+  - Android run `45002416771`: موفق؛ Android unit tests، guard منفی Release بدون کلید خصوصی، assembleDebug و upload artifact همگی موفق. مراحل build امضاشده Release به علت نبود secret کلید خصوصی skip شدند؛ بنابراین امضای production آزمایش نشده است.
+  - Python/security run `45002416762`: هر دو job یعنی security-tests و windows-secret-acl موفق؛ تست‌های Cloud Drive، Messenger، Gateway، Ghab، syntax bridge، backup/key policy و ACL ویندوز موفق.
+- بازبینی امنیتی جدید: `MainActivity.configureNativeBridge()` و `SiteActivity` از `addJavascriptInterface` استفاده می‌کنند؛ این API شیء را به همه frameهای WebView ارائه می‌دهد. در `web/app.js` nonce از fragment خوانده و در same-origin `sessionStorage` نگهداری می‌شود. این الگو احراز هویت per-load ایجاد می‌کند اما هویت main-frame را اثبات نمی‌کند؛ iframe هم‌مبدأ می‌تواند به sessionStorage همان origin دسترسی داشته باشد و در صورت دسترسی به nonce قادر به فراخوانی پل است. این یک ایراد باز با شدت بالا است و نباید رفع‌شده تلقی شود.
+- تصمیم اصلاحی: از تغییر شتاب‌زده‌ای که صرفاً iframeهای معمولی را با callback مسدود کند خودداری شد؛ چنین تغییری مسیرهای about:blank/srcdoc/blob و همه حالات WebView را اثباتاً پوشش نمی‌دهد. راهکار پایدار باید به APIای با کنترل صریح origin و isMainFrame (مانند AndroidX WebKit `addWebMessageListener`) مهاجرت کند یا سیاست no-frame را در سطح پاسخ‌های اصلی و همه صفحات قابل اعتماد enforce و regression-test کند. مهاجرت bridge نیازمند بازطراحی callهای sync فعلی در `web/app.js` به پروتکل async است؛ تا تکمیل آن ادعای isolation مجاز نیست.
+- بررسی Manifest: MainActivity و BootReceiver exported هستند؛ MainActivity فقط launcher و SEND/SEND_MULTIPLE دارد، NativeActivity و SiteActivity و سرویس‌های داخلی exported=false هستند. لازم است parsing کامل Intent و receiver boot و grant URI در چرخه بعد تست شود.
+- بررسی release signing در شاخه `feature/android-phone-host`: تنظیمات دیگر fallback به debug ندارند؛ CI فعلی PR #1 guard مشابه را با موفقیت اجرا کرده، اما این نتیجه به‌تنهایی اثبات اجرای همان workflow روی head مستقل PR #4 نیست.
+- PR #1 همچنان open/unmerged و mergeable است؛ main تغییر نکرده است. PR #3 open/draft و mergeable=true گزارش شد. PR #4 open/draft و mergeable=false گزارش شد؛ تا بررسی دقیق ancestry/conflict دستکاری base/rebase انجام نشد.
+- تغییرات این چرخه: فقط توضیح validation و ایراد bridge در بدنه PR #1 به‌روزرسانی شد؛ کد bridge هنوز اصلاح نشده است.
+- گام بعدی: بررسی کامل پل‌های MainActivity/SiteActivity و APIهای synchronous در JS؛ طراحی مهاجرت WebMessageListener با allowlist origin، الزام `isMainFrame`، schema پیام و پاسخ correlation-id؛ افزودن تست‌های unit/instrumentation برای رد iframe هم‌مبدأ/ناهم‌مبدأ و navigation؛ سپس CI Android و Python/Windows روی همان head.
