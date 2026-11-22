@@ -272,3 +272,26 @@
 - PR #1 همچنان open/unmerged و mergeable است؛ main تغییر نکرده است. PR #3 open/draft و mergeable=true گزارش شد. PR #4 open/draft و mergeable=false گزارش شد؛ تا بررسی دقیق ancestry/conflict دستکاری base/rebase انجام نشد.
 - تغییرات این چرخه: فقط توضیح validation و ایراد bridge در بدنه PR #1 به‌روزرسانی شد؛ کد bridge هنوز اصلاح نشده است.
 - گام بعدی: بررسی کامل پل‌های MainActivity/SiteActivity و APIهای synchronous در JS؛ طراحی مهاجرت WebMessageListener با allowlist origin، الزام `isMainFrame`، schema پیام و پاسخ correlation-id؛ افزودن تست‌های unit/instrumentation برای رد iframe هم‌مبدأ/ناهم‌مبدأ و navigation؛ سپس CI Android و Python/Windows روی همان head.
+
+
+## 2026-11-22 — چرخه نهم: کاهش سطح حمله iframe در WebView
+- شاخه: `fix/security-test-integrity`؛ head نهایی: `def588184b6d174c67368f4a7c4abea59ae71572`.
+- یافته: پل legacy مبتنی بر `addJavascriptInterface` در همه frameهای WebView در دسترس است؛ nonce فرگمنت و `sessionStorage` هویت main-frame را اثبات نمی‌کنند. به‌جای ادعای رفع کامل، یک دفاع چندلایه بدون تغییر قرارداد sync فعلی JS اعمال شد.
+- اصلاحات:
+  - Messenger: سند اصلی `web/index.html` از قبل `frame-src 'none'` داشت؛ `MainActivity.shouldOverrideUrlLoading` اکنون تمام پیمایش‌های HTTP(S) زیرقاب را رد می‌کند، حتی اگر هم‌مبدأ باشند.
+  - SiteActivity: تمام پیمایش‌های HTTP(S) زیرقاب رد می‌شوند؛ این سیاست هم برای Cloud Drive و هم Ghab اعمال می‌شود.
+  - Cloud Drive: `X-Frame-Options: DENY` و `frame-ancestors 'none'` در همه حالت‌ها؛ برای WebView اپ با user-agent marker `WindroidaApp/1`، مقدار `frame-src 'none'` است. مرورگر عادی `frame-src 'self'` می‌گیرد تا پیش‌نمایش PDF موجود با iframe نشکند.
+  - Ghab: هدر CSP پاسخ‌ها اکنون `frame-src 'none'` را صریحاً تعیین می‌کند؛ سند اصلی از قبل meta CSP مشابه داشت و X-Frame-Options DENY/frame-ancestors none نیز برقرار بودند.
+  - توضیحات کد در سه bootstrap جاوااسکریپت اصلاح شد تا nonce به‌عنوان هویت frame معرفی نشود.
+- تست‌های افزوده/اصلاح‌شده:
+  - `tests/test_webview_bridge.js`: بررسی CSPهای Messenger/Cloud Drive/Ghab و رد subframe navigation در هر دو Activity.
+  - `cloud-drive/tests/test_security.py`: تست واقعی هدرها با user-agent مرورگر عادی (حفظ PDF preview) و `WindroidaApp/1` (منع frame).
+  - `pentest_ghab.py`: بررسی `frame-src 'none'` و `frame-ancestors 'none'` در هدر پاسخ.
+- خطای CI و اصلاح: اجرای Python run `45005875071` در تست static bridge شکست خورد، چون تست Cloud Drive مقدار literal `frame-src 'none'` می‌خواست در حالی که policy عمداً بر اساس user-agent پویا شده بود. تست به بررسی شرط user-agent و قالب policy تغییر کرد؛ هیچ شکست runtime/security در برنامه مشاهده نشد.
+- CI نهایی روی head `def588184...`:
+  - Python security workflow `45005966389`: **success**؛ Node syntax + bridge tests، Android backup/key policy، Ghab pentest، Cloud Drive tests، Messenger/Gateway security tests و Windows owner-only ACL + Cloud Drive session-secret ACL همگی موفق.
+  - Android workflow `45005966538`: **success**؛ Android unit tests موفق، guard منفی Release بدون کلید خصوصی موفق، assembleDebug و artifact upload موفق. Release امضاشده واقعی به‌دلیل نبود secret کلید مالک skip شد؛ امضای production آزمایش نشده است.
+- محدودیت امنیتی صریح: این دفاع چندلایه سطح حمله iframeهای قابل بارگذاری را می‌بندد، اما API `addJavascriptInterface` ذاتاً frame-scoped نیست. تست‌های instrumented برای `srcdoc`/`about:blank` و ماتریس نسخه‌های Android System WebView هنوز اجرا نشده‌اند. بنابراین isolation قطعی main-frame ادعا نمی‌شود؛ مهاجرت آینده به `WebViewCompat.addWebMessageListener` با allowlist دقیق origin، بررسی `isMainFrame`، schema پیام و correlation ID همچنان راه‌حل نهایی‌تر است.
+- محدودیت تست: هیچ دستگاه فیزیکی یا emulator برای بررسی دستی PDF preview، دانلود، SSO، frame injection یا رفتار نسخه‌های مختلف WebView در این چرخه در دسترس نبود.
+- PR #1 باز و ادغام‌نشده و head آن با commit فوق همگام است؛ `main` تغییر نکرده و هیچ PR ادغام نشده است.
+- گام بعدی: طراحی و پیاده‌سازی پل async مبتنی بر WebMessageListener با تست instrumentation برای same-origin iframe، `srcdoc`، `about:blank`، redirect و navigation race؛ سپس ممیزی SSO/share replay و ظرفیت میزبان در PRهای وابسته.
