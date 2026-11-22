@@ -20,6 +20,10 @@ from pathlib import Path
 root_dir = Path(sys.argv[1])
 import android_host
 
+assert android_host._select_bind_address(["192.168.1.8", "10.0.0.2"]) == "192.168.1.8"
+assert android_host._select_bind_address(["8.8.8.8"]) == "127.0.0.1"
+assert android_host._select_bind_address([]) == "127.0.0.1"
+
 root = android_host._configure_paths(root_dir)
 web = root / "web"
 web.mkdir(parents=True, exist_ok=True)
@@ -52,6 +56,7 @@ result = json.loads(android_host.start_host(
 assert result["running"] and result["tls"]
 assert result["tcp_port"] == tcp_port
 assert result["web_port"] == web_port
+assert android_host._server.host == "127.0.0.1"
 assert (root / "data" / "admin_password.txt").is_file()
 assert json.loads(android_host.host_status())["running"]
 
