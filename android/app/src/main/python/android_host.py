@@ -86,6 +86,8 @@ def start_host(files_dir, lan_addresses="", tcp_port=8765, web_port=8081):
         ]
         if certificate_names:
             os.environ["WINDROIDA_CERT_NAMES"] = ",".join(certificate_names)
+        else:
+            os.environ.pop("WINDROIDA_CERT_NAMES", None)
 
         from server import WindroidaServer
 
