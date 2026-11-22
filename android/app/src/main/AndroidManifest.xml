@@ -17,6 +17,7 @@
     <application
         android:label="Windroida"
         android:icon="@mipmap/ic_launcher"
+        <!-- User-selected HTTP self-hosts remain a restricted web-only compatibility mode. Native APIs, bridge, file/media and notification credentials require pinned HTTPS. -->
         android:usesCleartextTraffic="true"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
