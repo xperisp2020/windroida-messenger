@@ -72,3 +72,19 @@
 - بازبینی پس از اصلاح:
 - ایرادات باز:
 - گام بعدی:
+
+
+## 2026-11-22 — چرخه اصلاح release signing
+- SHA پایه قبل از اصلاح: c80b07ce61d9408c531d41f2f3a64951aac85e93؛ فایل edame در commit جداگانه 9a71e82d4a89bda5107667ae5dcf5b3c1bc6c122 ایجاد شد.
+- محدوده: Android release signing، workflow ساخت APK و مستندات ساخت.
+- یافته با شدت بحرانی برای انتشار: در android/app/build.gradle.kts، وقتی کلید اختصاصی موجود نبود، release به‌صورت خودکار با debug signing config امضا می‌شد. این با ادعای release امن ناسازگار است و هویت ناشر قابل اتکا ایجاد نمی‌کند.
+- تغییرات:
+  - android/app/build.gradle.kts: حذف fallback به debug؛ پیکربندی release فقط با فایل keystore واقعی و رمزهای لازم فعال می‌شود؛ taskهای packageRelease/bundleRelease بدون کلید اختصاصی با خطای صریح متوقف می‌شوند.
+  - android/README-android.md: توضیح شد که نبود کلید فقط debug build مجاز است و release باید متوقف شود.
+  - .github/workflows/android.yml: توضیح build behavior به‌روزرسانی شد؛ در حالت بدون secret، CI فقط debug می‌سازد.
+  - .github/workflows/android.yml: مرحلهٔ جدید برای اجرای assembleRelease بدون کلید و assert کردن خطای «Release signing is not configured» اضافه شد؛ سپس assembleDebug اجرا می‌شود.
+- Commitهای فایل‌های اصلاح‌شده: 580815c2811bde833e4ed9a4ab2eeb5d84040aa8، 2351fa5e015739443ba9d75548301c78f35c42b6، 467818a75716215ff776ddb5b68236dc5f82909e؛ commitهای workflow test و scope task guard نیز در همین شاخه ثبت شدند.
+- تست واقعی این اصلاح هنوز در انتظار CI است؛ تا دریافت نتیجهٔ workflow، اصلاح را تأییدشده ندان.
+- بازبینی اولیه پس از تغییر: متن فایل Gradle مجدداً خوانده شد و دیگر fallback به debug در release وجود ندارد. CI باید guard و build debug را اجرا کند.
+- ایرادات باز: release signing با keystore واقعی در CI آزمایش نشده؛ دستگاه فیزیکی تست نشده؛ بررسی عمیق‌تر Android component/deep-link و Python backend ادامه دارد.
+- گام بعدی: دریافت نتیجهٔ CI روی آخرین head، رفع هر خطای Gradle/Workflow، سپس بررسی امنیت notification/logging و مسیرهای upload/share با تست بازتولیدکننده.
