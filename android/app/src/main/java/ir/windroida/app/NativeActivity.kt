@@ -79,6 +79,13 @@ class NativeActivity : Activity() {
         installCrashGuard()
         main.postDelayed(saver, 45_000)
         if (Prefs.mode(this) == "web") { startActivity(Intent(this, MainActivity::class.java)); finish(); return }   // the mode only ever changes when the user chooses it
+        // Native API sessions require TLS; never send passwords or session tokens over cleartext WebSocket/HTTP.
+        if (!Prefs.server(this).startsWith("https://", ignoreCase = true) || Prefs.pin(this).isEmpty()) {
+            Toast.makeText(this, "نسخه بومی فقط با HTTPS و گواهی تأییدشده کار می‌کند؛ نسخه وب با محدودیت باز می‌شود.", Toast.LENGTH_LONG).show()
+            startActivity(Intent(this, MainActivity::class.java).putExtra("forceWeb", true))
+            finish()
+            return
+        }
         th = Theme.of(this)
         ir.windroida.app.ui.Wall.appCtx = applicationContext
         model.listener = object : Model.Listener {
