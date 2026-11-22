@@ -110,3 +110,24 @@
 - شاخه کاری: fix/security-test-integrity؛ PR #1 به main باز است و نباید merge شود تا بررسی و CI کامل شوند.
 - اصلاح release signing و سیاست backup هر دو در همین شاخه هستند؛ شاخه‌های PR #2/#3/#4 همچنان وابسته به همین شاخه پایه‌اند.
 - در پایان هر نوبت، edame را با SHA نهایی و وضعیت واقعی تست‌ها به‌روزرسانی کن.
+
+
+## 2026-11-22 — چرخه سوم: اعتماد امن به Reverse Proxy و X-Forwarded-For
+- شاخه: `fix/security-test-integrity`
+- SHA کد/مستندات این چرخه: `5f842330e59b07bbb358a90c3813fad2c180e4a3`
+- یافته: `client_ip()` در صورت فعال بودن `CD_TRUSTED_PROXY=1`، اولین مقدار `X-Forwarded-For` را بدون بررسی IP اتصال‌دهنده و بدون اعتبارسنجی زنجیره می‌پذیرفت. در استقرار اشتباه یا دسترسی مستقیم به backend، مهاجم می‌توانست IP را جعل کند و محدودیت نرخ/ثبت رخداد را دور بزند.
+- اصلاحات:
+  - `cloud-drive/app/config.py`: افزودن `CD_TRUSTED_PROXY_CIDRS` و اعتبارسنجی CIDRها هنگام بارگذاری تنظیمات؛ CIDR نامعتبر باعث توقف startup می‌شود.
+  - `cloud-drive/app/security.py`: هدر forwarded فقط وقتی پذیرفته می‌شود که IP اتصال‌دهنده در شبکه صریحاً مورد اعتماد باشد؛ زنجیره از راست به چپ پیمایش و اولین hop غیرمورداعتماد انتخاب می‌شود؛ ورودی نامعتبر، زنجیره بیش از ۳۲ hop و نبود allowlist به socket peer برمی‌گردند.
+  - `cloud-drive/tests/test_security.py`: پنج تست برای نبود allowlist، peer غیرمجاز، زنجیره پراکسی معتبر، هدر خراب و زنجیره بیش از حد طولانی.
+  - `cloud-drive/README.md`، `.env.example` و `deploy/Caddyfile`: مستندات به‌روزرسانی شد؛ نمونه CIDR دقیق loopback و الزام بستن دسترسی مستقیم backend ذکر شد.
+- بازبینی پس از اصلاح: فایل‌های config، security، تست‌ها، README، نمونه env و Caddyfile دوباره از GitHub خوانده شدند؛ تنظیم CIDR و منطق fail-closed تأیید شد.
+- CI روی SHA `5f842330e59b07bbb358a90c3813fad2c180e4a3`:
+  - Python security workflow شماره `44997419674`: موفق؛ همه مراحل JavaScript syntax/bridge، Android backup policy، private-key permissions، Ghab، Cloud Drive، Messenger و Gateway موفق.
+  - Windows ACL job: موفق؛ owner-only ACL و Cloud Drive session-secret ACL موفق.
+  - Android workflow شماره `44997419723`: Android unit tests موفق؛ مرحله بررسی fail-closed بودن assembleRelease در نبود کلید در زمان ثبت این یادداشت هنوز `in_progress` بود؛ build debug و artifact upload هنوز انجام نشده بودند. نتیجه نهایی را تا تکمیل workflow تأیید نکن.
+- نکته سازگاری: `CD_TRUSTED_PROXY=1` به‌تنهایی دیگر برای اعتماد به XFF کافی نیست. استقرار reverse proxy باید CIDR دقیق peer را در `CD_TRUSTED_PROXY_CIDRS` تنظیم کند. بدون آن، برنامه به‌صورت امن از `REMOTE_ADDR` استفاده می‌کند.
+- PR #1 در این بازبینی باز و mergeable بود؛ main دست‌نخورده است. PRهای #2، #3 و #4 باز هستند اما API در این لحظه mergeable=false گزارش کرد؛ قبل از هر ادغام باید اختلاف base/شاخه و وابستگی‌ها دوباره بررسی و رفع شود.
+- ایرادات باز: تکمیل و تأیید Android release guard و assembleDebug روی head نهایی؛ بررسی cleartext HTTP سراسری Android و محدودسازی امن آن بدون شکستن self-hosted HTTP؛ ممیزی دقیق WebView iframe/bridge و deep links؛ بررسی rate limiter حافظه‌ای در سناریوی چند worker؛ ممیزی race و atomicity در upload/share و SSO.
+- گام بعدی: پس از ثبت این log، workflowهای جدید ناشی از commit را تا پایان دنبال کن؛ در صورت شکست، log کامل job را بخوان، اصلاح کن و دوباره اجرا کن. سپس به ممیزی Android cleartext/WebView و Cloud Drive upload/share برو.
+
