@@ -174,9 +174,12 @@ def create_app(**overrides):
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
         resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # The privileged Android WebView must not load child frames. Keep the browser's same-origin
+        # PDF preview working outside the app; frame-ancestors still prevents external embedding.
+        frame_src = "'none'" if "WindroidaApp/1" in request.headers.get("User-Agent", "") else "'self'"
         resp.headers.setdefault("Content-Security-Policy",
                                 "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-                                "frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; "
+                                f"frame-src {frame_src}; object-src 'none'; base-uri 'self'; form-action 'self'; "
                                 "frame-ancestors 'none'")
         if app.config["COOKIE_SECURE"] and app.config.get("HSTS", True):
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
