@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Never back up bearer tokens, pinned-server identity, or WebView cookies/local storage. -->
+    <!-- Messaging databases, attachments, credentials, preferences and WebView state are private user data. -->
+    <exclude domain="database" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="sharedpref" path="." />
     <exclude domain="sharedpref" path="wd.xml" />
     <exclude domain="sharedpref" path="wd_internal_launch.xml" />
     <exclude domain="root" path="app_webview/" />
