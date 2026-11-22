@@ -129,14 +129,15 @@ class SiteActivity : Activity() {
             }
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url.toString()
+                // The privileged bridge must never be exposed to a nested browsing context.
+                // CSP frame-src 'none' is enforced by the server; this also rejects all frame navigations here.
+                if (!r.isForMainFrame) return true
                 // WebView bridge navigation is limited to HTTP(S); non-web schemes are not dispatched as Android intents.
                 if (originOf(u) == null) return true
                 if (originOf(u) == origin) {
                     if (r.isForMainFrame && !hasBridgeNonce(u)) { v.loadUrl(withBridgeNonce(u)); return true }
                     return false
                 }
-                // External and sibling-origin iframe navigations must not inherit the privileged native bridge.
-                if (!r.isForMainFrame) return true
                 // A link to the messenger's exact configured origin returns to MainActivity.
                 if (TrustedOrigin.sameOrigin(Prefs.server(this@SiteActivity), u)) {
                     val hash = u.substringAfter('#', "").ifEmpty { null }
