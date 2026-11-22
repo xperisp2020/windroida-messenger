@@ -177,8 +177,8 @@ function pickWallImage(file){
 function applySize(n){document.body.style.fontSize=n+'px';lsSet('wd-size',n)}
 
 /* ---------- network (auto-reconnect + persistent session; a call survives short drops) ---------- */
-/* The Android Java bridge is callable from every WebView frame. Bind it to a per-load secret carried only in the top-level URL fragment,
-   then remove that fragment before route handling. Cross-origin frames cannot read the parent fragment and calls without the secret are rejected. */
+/* Legacy Android bridge bootstrap. The WebView API exposes this object to frames, so frame isolation is enforced separately:
+   the document CSP denies child frames and WebViewClient rejects every subframe navigation. This nonce is not frame identity. */
 (()=>{
   const raw=window.WD;
   const parts=location.hash.slice(1).split('&').filter(Boolean);
