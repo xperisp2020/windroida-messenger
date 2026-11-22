@@ -29,7 +29,7 @@ class NotifyService : Service() {
         const val CH_MSG = "msg"
         fun start(c: Context) {
             val server = Prefs.server(c)
-            if (!server.startsWith("https://", ignoreCase = true) || Prefs.pin(c).isEmpty()) {
+            if (!TransportPolicy.allowsPrivilegedFeatures(server, Prefs.pin(c))) {
                 stop(c)
                 return
             }
