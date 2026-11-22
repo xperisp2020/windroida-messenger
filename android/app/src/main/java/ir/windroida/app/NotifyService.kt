@@ -28,7 +28,12 @@ class NotifyService : Service() {
         const val CH_SVC = "svc"
         const val CH_MSG = "msg"
         fun start(c: Context) {
-            if (Prefs.token(c).isEmpty() || Prefs.server(c).isEmpty()) return
+            val server = Prefs.server(c)
+            if (!server.startsWith("https://", ignoreCase = true) || Prefs.pin(c).isEmpty()) {
+                stop(c)
+                return
+            }
+            if (Prefs.token(c).isEmpty()) return
             ContextCompat.startForegroundService(c, Intent(c, NotifyService::class.java))
         }
         fun stop(c: Context) { c.stopService(Intent(c, NotifyService::class.java)) }
@@ -117,7 +122,14 @@ class NotifyService : Service() {
             val server = Prefs.server(this)
             val token = Prefs.token(this)
             val pin = Prefs.pin(this)
-            if (server.isEmpty() || token.isEmpty() || (server.startsWith("https") && pin.isEmpty())) {
+            if (!server.startsWith("https://", ignoreCase = true) || pin.isEmpty()) {
+                // A server switch to HTTP must never carry a stored session token over cleartext.
+                Prefs.setToken(this, "")
+                running = false
+                stopSelf()
+                return
+            }
+            if (token.isEmpty()) {
                 sleep(5000); continue
             }
             try {
