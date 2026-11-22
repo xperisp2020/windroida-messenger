@@ -131,3 +131,10 @@
 - ایرادات باز: تکمیل و تأیید Android release guard و assembleDebug روی head نهایی؛ بررسی cleartext HTTP سراسری Android و محدودسازی امن آن بدون شکستن self-hosted HTTP؛ ممیزی دقیق WebView iframe/bridge و deep links؛ بررسی rate limiter حافظه‌ای در سناریوی چند worker؛ ممیزی race و atomicity در upload/share و SSO.
 - گام بعدی: پس از ثبت این log، workflowهای جدید ناشی از commit را تا پایان دنبال کن؛ در صورت شکست، log کامل job را بخوان، اصلاح کن و دوباره اجرا کن. سپس به ممیزی Android cleartext/WebView و Cloud Drive upload/share برو.
 
+
+
+### اصلاح وضعیت CI پس از ثبت یادداشت
+- اجرای اولیه Android workflow شماره `44997419723` در مرحله `Verify release packaging fails without a private signing key` به‌علت به‌روزرسانی شاخه در حین اجرا لغو شد؛ این مورد شکست تست یا موفقیت تست نیست.
+- Job مربوطه با درخواست rerun مجدداً اجرا شد. اجرای مجدد همان SHA کد `5f842330e59b07bbb358a90c3813fad2c180e4a3` اکنون در مرحله اجرای Android unit tests است؛ هنوز نتیجه نهایی Release guard و assembleDebug ثبت نشده است.
+- Python و Windows CI روی همان SHA همچنان success قطعی هستند.
+- تا زمان تکمیل rerun، وضعیت Android را تأییدشده نهایی تلقی نکن.
