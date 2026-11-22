@@ -309,7 +309,7 @@
   - workflowهای branch-specific به `feature/android-phone-host` اضافه شدند تا CI روی PRی که base آن شاخه امنیتی است نیز قابل اجرا باشد.
 - بررسی PR #3 (ظرفیت میزبان): `host_capacity.py` محدودیت ثبت‌نام را داخل `BEGIN IMMEDIATE` و lock مشترک با login اعمال می‌کند؛ `capacity_lock` ترتیب ورود/ثبت‌نام و تغییر تنظیمات را serialize می‌کند؛ نشست دوم همان کاربر slot آنلاین جدا نمی‌گیرد؛ شمارش online بر اساس کاربر یکتا و connection زنده است. ترتیب lock بررسی‌شده وارونگی آشکار ندارد. محدودیت online همچنان process-local است و برای multi-process/multi-replica backend مشترک لازم دارد. تست‌های integration ظرفیت و TLS shutdown در CI جدید اجرا شدند.
 - CI PR #4 روی head `91175917...`:
-  - Python workflow `45007706463`: **success**؛ syntax/runtime Android host، تست path/start/stop، کلیدها، Ghab، Cloud Drive، host capacity، TLS shutdown، Messenger/Gateway و Windows ACLها همگی موفق.
+  - Python workflow `45007706463`: **success**؛ syntax/runtime Android host، تست path/start/stop، private LAN binding، کلیدها، Ghab، Cloud Drive، host capacity، TLS shutdown، Messenger/Gateway و Windows ACLها همگی موفق.
   - Android workflow `45007270067`: پیش از پایان `testDebugUnitTest` با commit بعدی لغو شد؛ بنابراین نتیجه Android unit tests روی این head نامشخص است. guard منفی Release و build Debug نیز اجرا نشدند.
   - Emulator integration test فقط با `workflow_dispatch` اجرا می‌شود و هنوز اجرا نشده؛ تست دستگاه فیزیکی نیز وجود ندارد.
 - ایرادهای باز:
