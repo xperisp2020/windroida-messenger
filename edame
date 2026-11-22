@@ -209,3 +209,25 @@
   2. rate limiter process-local و پشتیبانی multi-worker در Cloud Drive تعیین تکلیف شود.
   3. SSO/share token و upload/download raceها و atomicity بیشتر بررسی شوند.
   4. پس از پایان هر تغییر، PRهای وابسته #2/#3/#4 از نظر base/head و CI مجدداً بررسی شوند؛ main و merge همچنان دست‌نخورده بمانند.
+
+
+## 2026-11-22 — چرخه ششم: رقابت پاک‌سازی Cloud Drive با تکمیل آپلود
+- SHA کد مبنا: `35fa46fd68ee063069bb6657231eb575a2394d6f`
+- محدوده بررسی: `cloud-drive/app/fileops.py`، `cloud-drive/app/routes_files.py`، `cloud-drive/app/db.py`، `cloud-drive/app/__init__.py`، `cloud-drive/app/security.py`، `cloud-drive/app/config.py`، `cloud-drive/app/wsgi.py`، `cloud-drive/tests/test_files.py` و `cloud-drive/README.md`.
+- یافته با شدت بالا: مسیر `upload_complete` پس از claim اتمیک، ردیف `uploads` را حذف و commit می‌کند، سپس خارج از transaction دیتابیس قطعه‌ها را assemble می‌کند. در همین بازه، `cleanup_stale_uploads` پوشه‌های staging بدون ردیف DB را بدون بررسی سن پوشه orphan فرض و حذف می‌کرد؛ housekeeping هم هر ۱۰ دقیقه اجرا می‌شود. بنابراین امکان حذف فایل‌های موقت در حین assemble و شکست تکمیل آپلود وجود داشت.
+- اصلاح:
+  - `cloud-drive/app/fileops.py`: پاک‌سازی stale uploads اکنون با `BEGIN IMMEDIATE` با chunk/cancel/complete سریالی می‌شود.
+  - پوشه staging بدون ردیف DB تنها وقتی حذف می‌شود که زمان آخرین تغییر آن از پنجره stale بیشتر باشد؛ پوشه تازه بدون ردیف می‌تواند متعلق به complete در حال اجرا باشد و حفظ می‌شود. پوشه orphan قدیمی پس از crash در نوبت بعدی پاک‌سازی خواهد شد.
+  - `cloud-drive/tests/test_files.py`: تست رگرسیون اضافه شد که وضعیت claim شدن upload را شبیه‌سازی می‌کند، حفظ پوشه تازه را بررسی می‌کند و حذف همان پوشه پس از قدیمی‌شدن را نیز می‌سنجد.
+  - `cloud-drive/README.md`: مرز RateLimiter process-local مستند شد؛ اجرای چند process/replica بدون backend مشترک مانند Redis، محدودیت نرخ توزیع‌شده محسوب نمی‌شود. entry point رسمی Waitress یک process با چند thread است.
+- بازبینی: مسیر claim در `routes_files.py` و قفل SQLite در `db.py` دوباره بررسی شد. پاک‌سازی stale-row در transaction قفل‌دار انجام می‌شود؛ پوشه claim شده و تازه در زمان assemble دیگر به‌عنوان orphan حذف نمی‌شود.
+- CI روی SHA کد `35fa46fd68ee063069bb6657231eb575a2394d6f`:
+  - Python security workflow `45001403646`: **success**؛ Cloud Drive tests، Messenger، Gateway، Ghab، backup/bridge/key checks و Windows ACL job موفق.
+  - Android workflow `45001403776`: هنگام ثبت این چرخه هنوز در حال اجرای Android unit tests بود؛ نتیجه نهایی را تا تکمیل run ثبت نکن. Release signing guard، assembleDebug و artifact upload نیز هنوز pending بودند.
+- وضعیت PR: PR #1 باز و ادغام‌نشده، mergeable؛ PRهای #2/#3/#4 همچنان باز و mergeable=false با baseهای قدیمی. هیچ‌کدام rebase یا merge نشدند تا زنجیره وابستگی بررسی شود. `main` تغییر نکرد.
+- موارد باز:
+  1. دریافت نتیجه نهایی Android workflow شماره `45001403776` و بررسی log در صورت شکست.
+  2. ممیزی lifecycle مجوزهای WebView و لغو PermissionRequest معلق هنگام navigation/activity destruction.
+  3. بررسی دقیق SSO/share replay و raceهای دیگر فایل.
+  4. تعیین تکلیف PRهای وابسته #2/#3/#4 پس از مقایسه diff و پایه‌ها.
+  5. تست دستگاه Android واقعی و Windows واقعی همچنان انجام‌نشده است.
