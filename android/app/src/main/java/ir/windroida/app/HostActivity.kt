@@ -282,7 +282,8 @@ class HostActivity : Activity() {
                 .apply()
         }
         val port = hostPrefs.getInt("web_port", 8081)
-        Prefs.setServer(this, "https://127.0.0.1:$port")
+        val localServer = firstHostUrl().ifBlank { "https://127.0.0.1:$port" }
+        Prefs.setServer(this, localServer)
         Prefs.setPin(this, "")
         Prefs.setToken(this, "")
         Prefs.setMode(this, mode)
