@@ -26,21 +26,45 @@ android {
     }
     fun ks(name: String, env: String): String? = ksProps.getProperty(name) ?: System.getenv(env)
     val ksFile = ks("storeFile", "WD_KEYSTORE")?.let { rootProject.file(it) }
+    val ksPassword = ks("storePassword", "WD_KS_PASS")
+    val keyAliasValue = ks("keyAlias", "WD_KEY_ALIAS") ?: "windroida"
+    val keyPasswordValue = ks("keyPassword", "WD_KEY_PASS") ?: ksPassword
+    val releaseSigningReady = ksFile?.isFile == true &&
+        !ksPassword.isNullOrBlank() &&
+        keyAliasValue.isNotBlank() &&
+        !keyPasswordValue.isNullOrBlank()
+
     signingConfigs {
-        if (ksFile != null && ksFile.exists()) {
+        if (releaseSigningReady) {
             create("release") {
                 storeFile = ksFile
-                storePassword = ks("storePassword", "WD_KS_PASS")
-                keyAlias = ks("keyAlias", "WD_KEY_ALIAS") ?: "windroida"
-                keyPassword = ks("keyPassword", "WD_KEY_PASS") ?: ks("storePassword", "WD_KS_PASS")
+                storePassword = ksPassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
             }
         }
     }
     buildTypes {
         release {
-            isMinifyEnabled = false          // no obfuscation: obfuscated code is itself something scanners distrust
+            isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    // Release packaging must never fall back to the public Android debug certificate.
+    // Keep debug builds and unit tests available when no owner key is configured.
+    project.tasks.configureEach {
+        if (name == "packageRelease" || name == "bundleRelease") {
+            doFirst {
+                if (!releaseSigningReady) {
+                    throw GradleException(
+                        "Release signing is not configured. Supply keystore.properties or WD_KEYSTORE, WD_KS_PASS, WD_KEY_ALIAS and WD_KEY_PASS. Debug signing is never used for release."
+                    )
+                }
+            }
         }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
