@@ -78,8 +78,8 @@ class SiteActivity : Activity() {
         super.onCreate(savedInstanceState)
         val rawUrl = intent.getStringExtra("url") ?: ""
         if (rawUrl.isEmpty() || !sameHost(rawUrl)) { Toast.makeText(this, "این آدرس مجاز نیست", Toast.LENGTH_SHORT).show(); finish(); return }
-        if (!Prefs.server(this).startsWith("https://", ignoreCase = true) ||
-            !rawUrl.startsWith("https://", ignoreCase = true) || Prefs.pin(this).isEmpty()) {
+        if (!TransportPolicy.allowsPrivilegedFeatures(Prefs.server(this), Prefs.pin(this)) ||
+            !rawUrl.startsWith("https://", ignoreCase = true)) {
             Toast.makeText(this, "Cloud Drive و قاب درون‌برنامه‌ای فقط با HTTPS و گواهی تأییدشده فعال‌اند.", Toast.LENGTH_LONG).show()
             finish()
             return
