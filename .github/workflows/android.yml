@@ -41,6 +41,16 @@ jobs:
       - name: Build release (signed with your key)
         if: env.HAVE_KEY == 'true'
         run: WD_KEYSTORE="$RUNNER_TEMP/windroida.jks" gradle --no-daemon assembleRelease
+      - name: Verify release packaging fails without a private signing key
+        if: env.HAVE_KEY != 'true'
+        run: |
+          if gradle --no-daemon assembleRelease > "$RUNNER_TEMP/release-signing-check.log" 2>&1; then
+            cat "$RUNNER_TEMP/release-signing-check.log"
+            echo "ERROR: release packaging unexpectedly succeeded without an owner key"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/release-signing-check.log"
+          grep -F "Release signing is not configured" "$RUNNER_TEMP/release-signing-check.log"
       - name: Build debug (no key configured)
         if: env.HAVE_KEY != 'true'
         run: gradle --no-daemon assembleDebug
