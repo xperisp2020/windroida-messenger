@@ -298,7 +298,7 @@
 
 
 ## 2026-11-22 — چرخه دهم: محدودسازی رابط شبکه میزبان Android و ممیزی ظرفیت
-- PR #4 branch: `feature/android-phone-host`؛ head بررسی‌شده: `be88e53d687d0dd083e9f026908bf20ab0038051`.
+- PR #4 branch: `feature/android-phone-host`؛ head بررسی‌شده: `911759173a75fc688584f22c132ce9f4fde60df3`.
 - یافته امنیتی: runtime آزمایشی Android پیش‌تر TCP و HTTPS را روی `0.0.0.0` bind می‌کرد؛ این یعنی تمام رابط‌های IPv4 از جمله رابط موبایل/VPN، نه فقط LAN، listener را می‌دیدند.
 - اصلاحات PR #4:
   - Python runtime اکنون فقط اولین IPv4 خصوصی معتبر را برای bind انتخاب می‌کند؛ در نبود آدرس معتبر فقط روی `127.0.0.1` گوش می‌دهد.
@@ -308,8 +308,8 @@
   - تست Kotlin برای allowlist نام رابط‌ها و تست Python برای انتخاب private IP، رد public IP، fallback loopback، پاک‌سازی SAN stale و bind واقعی اضافه شد.
   - workflowهای branch-specific به `feature/android-phone-host` اضافه شدند تا CI روی PRی که base آن شاخه امنیتی است نیز قابل اجرا باشد.
 - بررسی PR #3 (ظرفیت میزبان): `host_capacity.py` محدودیت ثبت‌نام را داخل `BEGIN IMMEDIATE` و lock مشترک با login اعمال می‌کند؛ `capacity_lock` ترتیب ورود/ثبت‌نام و تغییر تنظیمات را serialize می‌کند؛ نشست دوم همان کاربر slot آنلاین جدا نمی‌گیرد؛ شمارش online بر اساس کاربر یکتا و connection زنده است. ترتیب lock بررسی‌شده وارونگی آشکار ندارد. محدودیت online همچنان process-local است و برای multi-process/multi-replica backend مشترک لازم دارد. تست‌های integration ظرفیت و TLS shutdown در CI جدید اجرا شدند.
-- CI PR #4 روی head `be88e53...`:
-  - Python workflow `45007270057`: **success**؛ syntax/runtime Android host، تست path/start/stop، کلیدها، Ghab، Cloud Drive، host capacity، TLS shutdown، Messenger/Gateway و Windows ACLها همگی موفق.
+- CI PR #4 روی head `91175917...`:
+  - Python workflow `45007706463`: **success**؛ syntax/runtime Android host، تست path/start/stop، کلیدها، Ghab، Cloud Drive، host capacity، TLS shutdown، Messenger/Gateway و Windows ACLها همگی موفق.
   - Android workflow `45007270067`: تست‌های Android unit **موفق**؛ guard منفی Release بدون کلید در حال اجراست و build Debug هنوز شروع نشده. هیچ نتیجه نهایی برای APK تا پایان workflow ادعا نمی‌شود.
   - Emulator integration test فقط با `workflow_dispatch` اجرا می‌شود و هنوز اجرا نشده؛ تست دستگاه فیزیکی نیز وجود ندارد.
 - ایرادهای باز:
