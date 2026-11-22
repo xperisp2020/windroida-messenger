@@ -138,3 +138,33 @@
 - Job مربوطه با درخواست rerun مجدداً اجرا شد. اجرای مجدد همان SHA کد `5f842330e59b07bbb358a90c3813fad2c180e4a3` اکنون در مرحله اجرای Android unit tests است؛ هنوز نتیجه نهایی Release guard و assembleDebug ثبت نشده است.
 - Python و Windows CI روی همان SHA همچنان success قطعی هستند.
 - تا زمان تکمیل rerun، وضعیت Android را تأییدشده نهایی تلقی نکن.
+
+
+## 2026-11-22 — چرخه چهارم: هم‌زمانی آپلود/لغو و مرز تراکنش نشست
+- شاخه: `fix/security-test-integrity`
+- SHA کد اولیه چرخه: `7afcd594c77dd62de99d4d0814e8b5710df1d4f8`
+- اصلاح اول: `2df02b30ed69b804510fd393904a915535f3200f`
+  - در `cloud-drive/app/routes_files.py` عملیات `upload_chunk` و `upload_cancel` قبل از بررسی رکورد آپلود، قفل `BEGIN IMMEDIATE` می‌گیرند. این کار نوشتن فایل قطعه و تغییر metadata را با cancel/complete سریالی می‌کند.
+  - در `cloud-drive/tests/test_files.py` تست هم‌زمانی دو client مستقل اضافه شد؛ نوشتن قطعه عمداً متوقف می‌شود، cancel هم‌زمان آغاز می‌شود و انتظار می‌رود تا commit قطعه منتظر بماند؛ پس از آن رکورد و پوشه موقت باید حذف شده باشند.
+- تست اول: commit تست `6b0bb99e63c059b6140910805d2e985b497dbae2`. CI روی همین SHA کامل شد:
+  - Python security workflow `44998195947`: هر دو job `security-tests` و `windows-secret-acl` موفق؛ تمام مراحل از جمله Cloud Drive، Messenger، Gateway، تست backup Android و Windows ACL موفق.
+  - تست Cloud Drive شامل regression هم‌زمانی chunk/cancel بود و مرحله موفق گزارش شد.
+  - Android workflow `44998195951` در حین اجرای Android unit tests با commitهای بعدی لغو شد؛ نتیجه Android روی این SHA نهایی نیست.
+- بازبینی بعدی یک مورد مهم در مرز تراکنش پیدا کرد: decorator احراز هویت ممکن است وقتی نشست بیش از ۶۰ ثانیه idle بوده، `sessions.last_seen` را به‌روزرسانی کند و transaction ضمنی باز کند. اجرای مستقیم `BEGIN IMMEDIATE` در route می‌توانست در این حالت خطای «cannot start a transaction within a transaction» ایجاد کند.
+- اصلاح دوم: commit `4ebea3f8fca00a5e2c149fcd59515a0b81e66e2a`
+  - helper جدید `_begin_upload_write(db)` ابتدا transaction ضمنیِ به‌روزرسانی نشست را commit می‌کند و سپس قفل write صریح را می‌گیرد.
+  - مسیرهای upload init، chunk، complete و cancel به helper مشترک منتقل شدند.
+  - cancel اکنون حذف رکورد را پیش از پاک‌کردن پوشه staging commit می‌کند تا پاک‌سازی فایل قبل از ثبت حذف در DB انجام نشود.
+- تست دوم: commit `d246cf671f260315c605477435e7a913ed48989f`
+  - تست `test_upload_write_lock_handles_stale_session_touch` برای نشست idle اضافه شد؛ هم upload chunk و هم cancel باید پس از به‌روزرسانی last_seen موفق شوند.
+- وضعیت CI نهایی این چرخه در زمان ثبت:
+  - SHA `1a5110003f7a5798f016177c0cb37ed75700a6a4`: Python security و Windows ACL موفق، اما قبل از اصلاح helper تراکنش نشست.
+  - SHA `4ebea3f8fca00a5e2c149fcd59515a0b81e66e2a`: Python در حال اجرا/لغو احتمالی پس از push بعدی؛ نتیجه ملاک نیست.
+  - SHA `d246cf671f260315c605477435e7a913ed48989f`: Android در حال اجرا و Python در صف هنگام ثبت؛ هنوز هیچ‌کدام نتیجه نهایی محسوب نمی‌شوند.
+- ایرادات باز:
+  1. دریافت CI نهایی روی head شامل تست stale-session؛ هر شکست را از log استخراج و اصلاح کن.
+  2. تکمیل Android unit tests، Release signing guard، assembleDebug و artifact upload روی head نهایی.
+  3. ممیزی Android cleartext HTTP: `usesCleartextTraffic=true` و WebView bridge/permission/file chooser/download؛ باید طرحی سازگار با self-hosted HTTP طراحی شود که قابلیت‌های حساس روی اتصال ناامن فعال نشوند و share/cache خصوصی از طریق HTTP قابل استخراج نباشد.
+  4. RateLimiter در `cloud-drive/app/security.py` حافظه‌ای و process-local است؛ README اجرای Waitress تک‌process را توصیه می‌کند، اما پشتیبانی multi-worker باید صریحاً محدود/مستند شود یا backend مشترک اضافه شود.
+  5. ممیزی SSO، share token و دیگر raceهای فایل ادامه یابد.
+- گام بعدی: ابتدا CI روی head نهایی را کامل کن؛ سپس اصلاح HTTP/WebView را با تست‌های قابل اجرا و حفظ سازگاری بررسی کن. `main` و ادغام PRها بدون اجازه دست‌نخورده بمانند.
