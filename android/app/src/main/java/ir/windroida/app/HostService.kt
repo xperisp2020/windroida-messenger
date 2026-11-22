@@ -31,6 +31,13 @@ class HostService : Service() {
         private const val NOTIFICATION_ID = 2
         private const val PREFS = "wd_host"
 
+        internal fun isLanInterfaceName(name: String): Boolean {
+            val value = name.lowercase()
+            return value.contains("wlan") || value.contains("wifi") ||
+                value.startsWith("eth") || value.startsWith("en") ||
+                value.startsWith("ap") || value.startsWith("p2p")
+        }
+
         fun start(context: Context) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean("enabled", true).putString("error", "").putBoolean("running", false).apply()
@@ -235,11 +242,12 @@ class HostService : Service() {
     private fun localIPv4Addresses(): List<String> {
         return try {
             Collections.list(NetworkInterface.getNetworkInterfaces())
-                .filter { it.isUp && !it.isLoopback }
+                .filter { it.isUp && !it.isLoopback && isLanInterfaceName(it.name) }
                 .flatMap { network ->
                     val priority = when {
-                        network.name.startsWith("wlan", true) || network.name.contains("wifi", true) -> 0
-                        network.name.startsWith("eth", true) -> 1
+                        network.name.contains("wlan", true) || network.name.contains("wifi", true) ||
+                            network.name.startsWith("ap", true) || network.name.startsWith("p2p", true) -> 0
+                        network.name.startsWith("eth", true) || network.name.startsWith("en", true) -> 1
                         else -> 2
                     }
                     Collections.list(network.inetAddresses)
