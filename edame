@@ -1,0 +1,74 @@
+# ادامه فورک Windroida Messenger
+آخرین بروزرسانی: 2026-11-22 (UTC)
+
+## هدف و قواعد ادامه کار
+- مخزن: https://github.com/xperisp2020/windroida-messenger
+- شاخه اصلی توسعه امنیتی: `fix/security-test-integrity`
+- شاخه `main` نباید بدون تصمیم صریح کاربر تغییر کند؛ اصلاحات از طریق شاخه و Pull Request انجام شوند.
+- نام ثبت‌کننده تغییرات/مؤلف در متن‌های جدید پروژه: `shiraztipsy`؛ نام ChatGPT یا دستیار در هیچ فایل، کامیت، مستند یا رابط برنامه درج نشود.
+- چرخه اجباری: بررسی وضعیت و کد ← شناسایی ایراد با شواهد ← اصلاح کوچک و مستقل ← اجرای تست‌های مرتبط ← بررسی مجدد diff و رفتار ← اجرای مجدد تست‌ها و CI ← ثبت نتیجه و مرحله بعد در همین فایل. چرخه را تا رسیدن به نتیجه قابل اتکا ادامه بده؛ تست اجرا نشده را موفق گزارش نکن.
+- این فایل دفتر ثبت پیوسته است. در هر نوبت کاری، پیش از پایان، اقدامات، فایل‌ها، تصمیم‌ها، نتایج واقعی تست، خطاهای باز و قدم بعدی را به‌روزرسانی کن. تاریخ/ساعت و SHA شاخه را ثبت کن. تاریخچه قبلی را حذف نکن.
+- توسعه Windows و Android هر دو باید در بررسی‌ها و CI پوشش داده شوند. به‌ویژه رفتار Windows ACL و Android build/test حفظ شود.
+
+## وضعیت مخزن هنگام شروع این دفتر
+- مخزن عمومی و فورک است؛ دسترسی خواندن/نوشتن تأیید شده.
+- شاخه پیش‌فرض: `main`.
+- PR #1 باز و ادغام‌نشده؛ عنوان: Harden Android WebView bridge, TLS, secrets and security CI.
+- شاخه PR #1: `fix/security-test-integrity`.
+- SHA فعلی مشاهده‌شده شاخه: `c80b07ce61d9408c531d41f2f3a64951aac85e93`.
+- PR #1 به `main` هدف‌گذاری شده و main در جریان کار قبلی دست‌نخورده مانده است.
+- PRهای دیگر باز هستند و بر شاخه امنیتی پایه‌گذاری شده‌اند:
+  - PR #2، شاخه `feature/peer-hosted-android-design`، سند معماری میزبانی مستقل گوشی و دعوت امن؛ Draft.
+  - PR #3، شاخه `feature/cross-platform-peer-hosting`، کنترل ظرفیت میزبانی Windows/Android.
+  - PR #4، شاخه `feature/android-phone-host`، runtime آزمایشی میزبان Android.
+- ترتیب وابستگی مهم است: PR #2/#3/#4 فعلاً به `fix/security-test-integrity` وابسته‌اند؛ قبل از ادغام/تغییر پایه، زنجیره PRها و diff هر شاخه بازبینی شود.
+
+## سابقه اقدامات تأییدشده
+### 2026-11-21 — امنیت و CI
+- تست‌های امنیتی کاذب/غیرمعتبر و رفتار exit code شکست بررسی و اصلاح شد.
+- workflow امنیت Python برای اجرای تست‌های Ghab، Messenger و Gateway اضافه/اصلاح شد.
+- اصلاحات امنیتی Android شامل احراز هویت bridge با nonce، کنترل origin/navigation، محدودیت TLS/redirect، حفاظت فایل کلیدها و secretها، backup exclusions و تست‌های مرتبط در PR #1 ثبت شده است.
+- طبق بدنه PR #1، workflowهای Python security و Windows ACL موفق گزارش شده‌اند؛ Android workflow run شماره 44917242581 شامل unit tests، assembleDebug و artifact upload موفق گزارش شده است. APK خروجی debug است، نه production-signed.
+- طبق سوابق قبلی: Ghab برابر 86/0؛ Messenger ابتدا 55/56 و پس از اصلاح سناریوی voice_played موفق؛ Gateway موفق.
+- محدودیت اعلام‌شده: آزمون دستگاه فیزیکی، استقرار production و pentest مستقل بیرونی انجام نشده است.
+- HTTP cleartext برای سازگاری با self-hosted HTTP هنوز در برخی مسیرها مجاز مانده؛ این موضوع باید با تصمیم محصول و محدودسازی صریح بررسی شود.
+
+### 2026-11-22 — بازبینی وضعیت جاری
+- PR #1 در زمان بازبینی همچنان open/unmerged و mergeable گزارش شد؛ head همان SHA بالا بود.
+- PRهای #2، #3، #4 نیز open هستند.
+- آخرین workflow run بررسی‌شده: #44945316840 برای PR #4؛ jobهای security-tests و windows-secret-acl و تمام stepهای فهرست‌شده موفق بودند. workflow ساخت APK برای همان head نیز run #44945316825 با نتیجه success گزارش شد.
+- runهای قبلی برخی cancelled هستند؛ موارد cancelled را شکست کد تلقی نکن، ولی نتیجه نهایی head فعلی ملاک است.
+- فایل `edame` پیش از این commit در شاخه وجود نداشت؛ این فایل برای اولین بار در همین commit ایجاد می‌شود.
+
+## یافته‌های باز / موارد نیازمند ممیزی
+1. ممیزی عمیق منطق احراز هویت، نشست، CSRF، SSO، مجوزهای شیء/IDOR، اشتراک‌گذاری، آپلود/دانلود و محدودیت منابع در Python backend و Cloud Drive؛ تست‌های موجود به‌تنهایی کافی نیستند.
+2. بازبینی امنیت Android: exported components، intents/deep links، WebView bridge، TLS/pinning، backup، permissions، notification/log privacy، local storage و چرخه‌عمر host runtime.
+3. بررسی signing: اطمینان از اینکه release build هرگز با debug keystore امضا نشود؛ نبود secret امضای production باید به‌صورت fail-closed و شفاف مدیریت شود.
+4. بررسی تنظیمات proxy و اعتماد به X-Forwarded-For؛ فقط proxyهای مورد اعتماد باید بتوانند IP مبدأ را تعیین کنند و زنجیره هدر باید درست parse شود.
+5. بررسی rate limiterهای درون‌حافظه‌ای در برابر چند worker/چند replica و اطمینان از اینکه محدودیت‌های حیاتی سمت backend enforce شوند.
+6. بررسی اتمیک بودن مصرف replay token و دعوت‌ها، race conditionها و transaction boundaryها.
+7. ارزیابی دقیق PR #3 و #4 از منظر ظرفیت، race، توقف امن TLS/server، path handling، sandbox و دسترسی شبکه؛ تست CI سبز به‌تنهایی اثبات امنیت نیست.
+8. بررسی dependency pinning، supply-chain، workflow permissions، action pinning، secrets exposure و artifact provenance.
+9. تست یکپارچه روی دو دستگاه Android واقعی و Windows واقعی در صورت فراهم بودن محیط؛ فعلاً این موارد را انجام‌شده فرض نکن.
+10. ارزیابی امکان‌پذیری ادعاهای E2EE، NAT traversal/relay و میزبانی اینترنتی؛ هر قابلیت آزمایشی باید دقیقاً با وضعیت واقعی برچسب‌گذاری شود.
+
+## برنامه ادامه با اولویت
+1. ابتدا محتوای فعلی شاخه‌ها و PRها را مجدداً بخوان و diffهای PR #2/#3/#4 را کامل مرور کن؛ تغییرات هم‌پوشان/وابستگی‌ها را مشخص کن.
+2. ممیزی کد اجرایی Python را از مسیرهای حساس آغاز کن؛ برای هر یافته یک تست بازتولیدکننده اضافه کن، سپس fix و regression test.
+3. Android release signing و component/intent/deep-link security را بررسی کن؛ هر اصلاح را با unit tests و assembleDebug و workflow ویندوز/پایتون سازگار کن.
+4. Windows host/capacity/ACL و Android host runtime را در هر تغییر مرتبط تست کن.
+5. پس از هر commit، CI همان head و PRهای وابسته را بررسی کن؛ در صورت fail، log دقیق را بخوان، اصلاح کن و دوباره اجرا کن.
+6. مستندات معماری را با implementation واقعی همگام نگه دار؛ قابلیت طراحی‌شده یا آزمایشی را عملیاتی/امن/تولیدی معرفی نکن.
+7. PR #1 را تا پایان بررسی‌ها باز نگه دار؛ main را مستقیم تغییر نده و PRها را بدون بررسی وابستگی merge نکن.
+
+## قالب ثبت هر نوبت
+برای هر ادامه، یک بخش جدید با تاریخ و SHA پایه اضافه کن:
+- محدوده بررسی:
+- فایل‌ها/مسیرهای بررسی‌شده:
+- یافته‌ها و شدت:
+- تغییرات اعمال‌شده (مسیر + دلیل):
+- تست‌ها و فرمان/Workflow:
+- نتیجه واقعی و SHA:
+- بازبینی پس از اصلاح:
+- ایرادات باز:
+- گام بعدی:
