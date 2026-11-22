@@ -122,7 +122,7 @@ class NotifyService : Service() {
             val server = Prefs.server(this)
             val token = Prefs.token(this)
             val pin = Prefs.pin(this)
-            if (!server.startsWith("https://", ignoreCase = true) || pin.isEmpty()) {
+            if (!TransportPolicy.allowsPrivilegedFeatures(server, pin)) {
                 // A server switch to HTTP must never carry a stored session token over cleartext.
                 Prefs.setToken(this, "")
                 running = false
