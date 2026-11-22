@@ -52,7 +52,7 @@ android {
 
     // Fail at packaging time when no owner-controlled release key is configured.
     // Debug builds and unit tests remain available without release credentials.
-    tasks.configureEach {
+    project.tasks.configureEach {
         if (name == "packageRelease" || name == "bundleRelease") {
             doFirst {
                 if (!releaseSigningReady) {
