@@ -54,6 +54,7 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private var pendingPerm: PermissionRequest? = null
+    private var pendingPermResources: Array<String> = emptyArray()
     private var pendingChat = 0
     private var pageReady = false
     @Volatile private var bridgeNonce = ""
@@ -426,22 +427,32 @@ class MainActivity : Activity() {
 
     private fun handlePermission(r: PermissionRequest) {
         if (!isSecureTransport() || !TrustedOrigin.sameOrigin(Prefs.server(this), r.origin.toString())) { r.deny(); return }
+        val allowed = r.resources.filter {
+            it == PermissionRequest.RESOURCE_AUDIO_CAPTURE || it == PermissionRequest.RESOURCE_VIDEO_CAPTURE
+        }.toTypedArray()
+        // Never grant unknown WebView permission resources just because they need no Android runtime permission.
+        if (allowed.isEmpty() || allowed.size != r.resources.size) { r.deny(); return }
         val need = ArrayList<String>()
-        for (res in r.resources) {
-            if (res == PermissionRequest.RESOURCE_AUDIO_CAPTURE) need.add(Manifest.permission.RECORD_AUDIO)
-            if (res == PermissionRequest.RESOURCE_VIDEO_CAPTURE) need.add(Manifest.permission.CAMERA)
-        }
+        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in allowed) need.add(Manifest.permission.RECORD_AUDIO)
+        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in allowed) need.add(Manifest.permission.CAMERA)
         val missing = need.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) r.grant(r.resources)
-        else { pendingPerm?.deny(); pendingPerm = r; requestPermissions(missing.toTypedArray(), 78) }
+        if (missing.isEmpty()) r.grant(allowed)
+        else {
+            pendingPerm?.deny()
+            pendingPerm = r
+            pendingPermResources = allowed
+            requestPermissions(missing.toTypedArray(), 78)
+        }
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(code, perms, res)
         if (code == 78) {
             val p = pendingPerm
+            val allowed = pendingPermResources
             pendingPerm = null
-            if (p != null) { if (res.isNotEmpty() && res.all { it == PackageManager.PERMISSION_GRANTED }) p.grant(p.resources) else p.deny() }
+            pendingPermResources = emptyArray()
+            if (p != null) { if (res.isNotEmpty() && res.all { it == PackageManager.PERMISSION_GRANTED }) p.grant(allowed) else p.deny() }
         }
     }
 
