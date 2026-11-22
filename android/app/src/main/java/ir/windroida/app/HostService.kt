@@ -22,7 +22,7 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
 
-/** Keeps the phone's own Windroida messenger server alive while the user explicitly hosts. */
+/** Keeps the messenger host alive on one selected private LAN IPv4 interface (or loopback if none exists). */
 class HostService : Service() {
     companion object {
         const val ACTION_START = "ir.windroida.app.host.START"
