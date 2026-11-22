@@ -5,7 +5,7 @@ concurrency:
   cancel-in-progress: true
 on:
   push:
-    branches: [main]
+    branches: [main, feature/android-phone-host]
   pull_request:
   workflow_dispatch:
 
