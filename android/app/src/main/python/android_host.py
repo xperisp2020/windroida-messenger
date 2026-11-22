@@ -1,6 +1,7 @@
 """Embedded Windroida messenger host for Android's foreground service."""
 import contextlib
 import io
+import ipaddress
 import json
 import os
 import threading
@@ -36,6 +37,30 @@ def _configure_paths(files_dir):
     return root
 
 
+def _is_private_ipv4(value):
+    try:
+        address = ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        return False
+    return isinstance(address, ipaddress.IPv4Address) and not address.is_link_local and (
+        address.is_private or address.is_loopback
+    )
+
+
+def _select_bind_address(addresses):
+    """Bind only to a validated private LAN IPv4 address; fall back to loopback."""
+    for raw in addresses:
+        try:
+            address = ipaddress.ip_address(str(raw).strip())
+        except ValueError:
+            continue
+        if isinstance(address, ipaddress.IPv4Address) and not address.is_link_local and (
+            address.is_private or address.is_loopback
+        ):
+            return str(address)
+    return "127.0.0.1"
+
+
 def start_host(files_dir, lan_addresses="", tcp_port=8765, web_port=8081):
     """Start the same TCP and HTTPS/WebSocket server used by the Windows launcher."""
     global _server
@@ -53,13 +78,21 @@ def start_host(files_dir, lan_addresses="", tcp_port=8765, web_port=8081):
             raise RuntimeError("Windroida web client assets were not installed")
 
         addresses = [x.strip() for x in str(lan_addresses).split(",") if x.strip()]
-        if addresses:
-            os.environ["WINDROIDA_CERT_NAMES"] = ",".join(addresses)
+        bind_address = _select_bind_address(addresses)
+        certificate_names = [
+            str(ipaddress.ip_address(value))
+            for value in addresses
+            if _is_private_ipv4(value)
+        ]
+        if certificate_names:
+            os.environ["WINDROIDA_CERT_NAMES"] = ",".join(certificate_names)
 
         from server import WindroidaServer
 
+        # Do not listen on every interface: Android's public/cellular interfaces must not
+        # become reachable just because the phone is hosting for its local Wi-Fi network.
         instance = WindroidaServer(
-            host="0.0.0.0",
+            host=bind_address,
             port=int(tcp_port),
             tls=True,
             db_path=root / "data" / "windroida.db",
