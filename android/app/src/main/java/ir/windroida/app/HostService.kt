@@ -164,7 +164,7 @@ class HostService : Service() {
                 }
                 prefs.edit()
                     .putBoolean("running", true)
-                    .putString("ips", addresses.joinToString(","))
+                    .putString("ips", addresses.firstOrNull().orEmpty())
                     .putInt("web_port", status.optInt("web_port", 8081))
                     .putInt("tcp_port", status.optInt("tcp_port", 8765))
                     .putString("error", "")
