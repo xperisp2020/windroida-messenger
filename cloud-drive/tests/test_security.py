@@ -173,9 +173,15 @@ class TrustedProxyAddressTests(Base):
             "127.0.0.1",
         )
 
-    def test_security_headers_block_all_frames(self):
-        response = self.new_client().get("/")
-        csp = response.headers.get("Content-Security-Policy", "")
-        self.assertIn("frame-src 'none'", csp)
-        self.assertIn("frame-ancestors 'none'", csp)
-        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+    def test_security_headers_isolate_android_webview_frames(self):
+        browser = self.new_client().get("/")
+        browser_csp = browser.headers.get("Content-Security-Policy", "")
+        self.assertIn("frame-src 'self'", browser_csp)  # browser PDF preview remains available
+        self.assertIn("frame-ancestors 'none'", browser_csp)
+        self.assertEqual(browser.headers.get("X-Frame-Options"), "DENY")
+
+        android = self.new_client().get("/", headers={"User-Agent": "WindroidaApp/1"})
+        android_csp = android.headers.get("Content-Security-Policy", "")
+        self.assertIn("frame-src 'none'", android_csp)
+        self.assertIn("frame-ancestors 'none'", android_csp)
+        self.assertEqual(android.headers.get("X-Frame-Options"), "DENY")
