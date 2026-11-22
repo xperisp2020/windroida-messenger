@@ -54,6 +54,18 @@ android {
         }
     }
 
+    // Fail before executing release task dependencies; the CI no-key guard must not need
+    // to compile the complete Android/Python release just to prove signing is mandatory.
+    gradle.taskGraph.whenReady {
+        if (!releaseSigningReady && allTasks.any {
+                it.name == "assembleRelease" || it.name == "packageRelease" || it.name == "bundleRelease"
+            }) {
+            throw GradleException(
+                "Release signing is not configured. Supply keystore.properties or WD_KEYSTORE, WD_KS_PASS, WD_KEY_ALIAS and WD_KEY_PASS. Debug signing is never used for release."
+            )
+        }
+    }
+
     // Release packaging must never fall back to the public Android debug certificate.
     // Keep debug builds and unit tests available when no owner key is configured.
     project.tasks.configureEach {
