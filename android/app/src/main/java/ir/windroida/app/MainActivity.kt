@@ -427,11 +427,11 @@ class MainActivity : Activity() {
 
     private fun handlePermission(r: PermissionRequest) {
         if (!isSecureTransport() || !TrustedOrigin.sameOrigin(Prefs.server(this), r.origin.toString())) { r.deny(); return }
-        val allowed = r.resources.filter {
-            it == PermissionRequest.RESOURCE_AUDIO_CAPTURE || it == PermissionRequest.RESOURCE_VIDEO_CAPTURE
-        }.toTypedArray()
         // Never grant unknown WebView permission resources just because they need no Android runtime permission.
-        if (allowed.isEmpty() || allowed.size != r.resources.size) { r.deny(); return }
+        val allowed = WebPermissionPolicy.allowedResources(
+            r.resources, PermissionRequest.RESOURCE_AUDIO_CAPTURE, PermissionRequest.RESOURCE_VIDEO_CAPTURE
+        )
+        if (allowed == null) { r.deny(); return }
         val need = ArrayList<String>()
         if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in allowed) need.add(Manifest.permission.RECORD_AUDIO)
         if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in allowed) need.add(Manifest.permission.CAMERA)
